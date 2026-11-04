@@ -969,13 +969,13 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
     }
     isClientMode = true
     lastPropsKey = JSON.stringify(props)
-    const { Box, Text, Client } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
     if (isFooter) {
         return (
             <Box flexDirection="row">
                 {theirs}
                 <Text> </Text>
-                <Client key={CLIENT_KEY} module="./band-client.tsx" props={props} width={cols} height={props.rows} />
+                {h('Client', { key: CLIENT_KEY, module: './band-client.tsx', props, width: cols, height: props.rows })}
             </Box>
         )
     }
@@ -984,7 +984,7 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
         <Box flexDirection="column">
             {theirs}
             <Box flexDirection="row" justifyContent="flex-end">
-                <Client key={CLIENT_KEY} module="./band-client.tsx" props={props} width={cols} height={props.rows} />
+                {h('Client', { key: CLIENT_KEY, module: './band-client.tsx', props, width: cols, height: props.rows })}
             </Box>
         </Box>
     )
