@@ -444,11 +444,11 @@ test('a session names itself by its thread title from the transcript, a rename f
     const transcript = ['{"type":"ai-title","aiTitle":"Frontend on a new host"}', '{"type":"custom-title","customTitle":"refunds"}']
     const grep = (mark: string): string => transcript.flatMap(line => line.match(new RegExp(mark)) ?? []).pop() ?? ''
     on('process.run', (_, e) => {
-        const [command, , , , path, ...marks] = e.argv
+        const [command, , , mark = '', path] = e.argv
         const stdout = command === 'find'
             ? '/Users/me/.claude/projects/-work/me.jsonl\n'
-            : command === 'sh' && path === '/Users/me/.claude/projects/-work/me.jsonl'
-                ? `${marks.map(grep).join('\n')}\n`
+            : command === 'grep' && path === '/Users/me/.claude/projects/-work/me.jsonl'
+                ? `${grep(mark)}\n`
                 : 'main\n'
 
         return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -934,7 +934,7 @@ test('a new session finds its transcript once it exists and names itself by the 
     on('process.run', (_, e) => {
         const argv = (e as { argv: string[] }).argv
         const found = argv[0] === 'find' && isWritten ? '/home/.claude/projects/x/me.jsonl\n' : ''
-        const titled = argv[0] === 'sh' ? '"aiTitle":"New thread"\n' : found
+        const titled = argv[0] === 'grep' ? '"aiTitle":"New thread"\n' : found
 
         return { value: { exitCode: titled === '' ? 1 : 0, stdout: titled, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     })

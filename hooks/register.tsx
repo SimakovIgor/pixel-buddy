@@ -6,12 +6,11 @@ import { STAT_NAMES, cardOf, hatch, introOf, peakOf, rarityOf } from './buddy'
 import type { Buddy } from './buddy'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
-import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, PORTRAIT_COLS, PORTRAIT_ROWS, FRUIT_MS, ROWS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, encode, maxXOf, noteTtlOf, paint, paintPortrait, rowsOf } from './scene'
+import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, PORTRAIT_COLS, PORTRAIT_ROWS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, encode, maxXOf, noteTtlOf, paintPortrait, rowsOf } from './scene'
 import type { ActionKind, Menu, MenuItem, Mood, Neighbor, NeighborStatus, Pose, Season, View } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
-const KEY = 'buddy'
 const CLIENT_KEY = 'buddy-band'
 const PORTRAIT_KEY = 'portrait'
 const CARD = 'buddy-card'
@@ -90,22 +89,14 @@ let lastFrameAt = 0
 let isTicking = false
 let timerGeneration = 0
 let frames = 0
-let bandId: string | null = null
 let cols = WIDTH
-let lastCells = ''
 let lastPortrait = ''
 let isCardOpen = false
 let isCardRaster = false
 let jumpAt: number | null = null
 let jumpFrom = 0
 let jumpTo = 0
-let mountedRows = ROWS
-let isClientBroken = false
 let messages = 0
-let faults = 0
-let brokenAt = 0
-const CLIENT_RETRY_MS = 3000
-const CLIENT_RETRIES = 3
 let explainedKey = ''
 let theme: Theme = 'auto'
 let menuPage: 'main' | 'species' | null = null
@@ -200,13 +191,18 @@ const valueOf = (line: string): string => {
     }
 }
 
+const lastMatchOf = async ($: EngineInterface, mark: string): Promise<string> => {
+    const run = await $.process.run(['grep', '-o', '-E', mark, transcript], { timeoutMs: 3000 })
+
+    return run.stdout.trimEnd().split('\n').pop() ?? ''
+}
+
 const readTitle = async ($: EngineInterface): Promise<void> => {
     if (transcript === '') {
         return
     }
-    const script = 'grep -o -E "$2" "$1" | tail -n 1; grep -o -E "$3" "$1" | tail -n 1'
-    const run = await $.process.run(['sh', '-c', script, 'sh', transcript, ...TITLE_MARKS], { timeoutMs: 3000 })
-    const found = run.stdout.split('\n').map(valueOf).find(value => value.trim() !== '')
+    const matches = [await lastMatchOf($, TITLE_MARKS[0] ?? ''), await lastMatchOf($, TITLE_MARKS[1] ?? '')]
+    const found = matches.map(valueOf).find(value => value.trim() !== '')
     title = found === undefined ? title : titleOf(found)
 }
 
@@ -652,7 +648,7 @@ const explain = async ($: EngineInterface, term: string, now: number): Promise<v
 }
 
 const startJump = (now: number): boolean => {
-    if (bandId === null && !isClientMode) {
+    if (!isClientMode) {
         return false
     }
     const from = Math.round(walk.x ?? maxXOf(cols))
@@ -727,10 +723,6 @@ const frame = async ($: EngineInterface): Promise<void> => {
     }
     hearts = hearts.filter(at => now - at < HEART_MS)
     landJump(now)
-    if (isClientBroken && faults <= CLIENT_RETRIES && now - brokenAt > CLIENT_RETRY_MS) {
-        isClientBroken = false
-        $.ui.invalidate('ui.render')
-    }
     if (note !== null && now - note.at > noteTtlOf(note.text)) {
         note = null
     }
@@ -761,14 +753,7 @@ const frame = async ($: EngineInterface): Promise<void> => {
         stepGlance(now)
     }
     const fresh = { ...view, pose: poseOf(now) }
-    let needsRedraw = !isClientMode && fresh.rows !== mountedRows
-    if (!isClientMode && bandId !== null && !needsRedraw) {
-        const cells = encode(paint(fresh))
-        if (cells !== lastCells) {
-            lastCells = cells
-            needsRedraw = await show($, bandId, KEY, cells)
-        }
-    }
+    let needsRedraw = false
     if (isCardOpen && isCardRaster) {
         const portrait = encode(paintPortrait(fresh))
         if (portrait !== lastPortrait) {
@@ -931,8 +916,6 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         leave = arg === 'off' && !isOff ? { species: current.species, at: now } : null
         hatchAt = arg === 'on' && isOff ? now : hatchAt
         isOff = arg === 'off'
-        isClientBroken = false
-        faults = 0
         $.ui.invalidate('ui.render')
 
         return isOff ? 'Buddy is resting' : 'Buddy is back'
@@ -940,7 +923,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     if (arg === 'debug') {
         return [
             `frames ${frames}, last frame ${Math.round(now - lastFrameAt)} ms ago`,
-            `drawing: ${isClientMode ? 'client' : isClientBroken ? 'raster, client broken' : 'raster'}`,
+            `drawing: ${isClientMode ? 'client' : 'not drawn yet'}`,
             `clicks heard: ${messages}${lastMessage === '' ? '' : `, last: ${lastMessage}`}`,
             `problems: ${lastDeny || 'none'}`,
         ].join('\n')
@@ -980,48 +963,31 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
         hatchAt = now
     }
     cols = Math.min(WIDTH, width)
-    const view = viewOf(now)
-    if (view === null || cols < MIN_COLS) {
-        return theirs
-    }
     const props = bandPropsOf(now)
-    const canClient = (e.surface === 'terminal' || e.surface === 'desktop') && !isClientBroken
-    const place = (band: RenderElement): RenderElement => {
-        const { Box, Text } = $.ui.resolve(e)
-
-        return isFooter
-            ? (
-                <Box flexDirection="row">
-                    {theirs}
-                    <Text> </Text>
-                    {band}
-                </Box>
-            )
-            : (
-                <Box flexDirection="column">
-                    {theirs}
-                    <Box flexDirection="row" justifyContent="flex-end">{band}</Box>
-                </Box>
-            )
-    }
-    if (canClient && props !== null && (e.surface === 'terminal' || e.surface === 'desktop')) {
-        isClientMode = true
-        lastPropsKey = JSON.stringify(props)
-        const { Client } = $.ui.resolve(e)
-
-        return place(<Client key={CLIENT_KEY} module="./band-client.tsx" props={props} width={cols} height={props.rows} />)
-    }
-    isClientMode = false
-    if (e.surface !== 'terminal') {
+    if (props === null || cols < MIN_COLS || (e.surface !== 'terminal' && e.surface !== 'desktop')) {
         return theirs
     }
-    bandId = e.requestId ?? 'band'
-    mountedRows = view.rows
-    const cells = encode(paint({ ...view, cols }))
-    lastCells = cells
-    const { Raster } = $.ui.resolve(e)
+    isClientMode = true
+    lastPropsKey = JSON.stringify(props)
+    const { Box, Text, Client } = $.ui.resolve(e)
+    if (isFooter) {
+        return (
+            <Box flexDirection="row">
+                {theirs}
+                <Text> </Text>
+                <Client key={CLIENT_KEY} module="./band-client.tsx" props={props} width={cols} height={props.rows} />
+            </Box>
+        )
+    }
 
-    return place(<Raster key={KEY} columns={cols} rows={view.rows} cells={cells} />)
+    return (
+        <Box flexDirection="column">
+            {theirs}
+            <Box flexDirection="row" justifyContent="flex-end">
+                <Client key={CLIENT_KEY} module="./band-client.tsx" props={props} width={cols} height={props.rows} />
+            </Box>
+        </Box>
+    )
 }
 
 export const register: Register = on => {
@@ -1271,17 +1237,6 @@ export const register: Register = on => {
         const props = bandPropsOf(now)
 
         return props === null ? {} : { props }
-    })
-
-    on('ui.fault', async ($, e, next) => {
-        isClientBroken = true
-        isClientMode = false
-        faults += 1
-        brokenAt = await $.clock.now()
-        lastDeny = `client fault ${faults} (${e.phase}): ${e.reason}`
-        $.ui.invalidate('ui.render')
-
-        return next(e)
     })
 
     on('ui.close', async ($, e, next) => {
