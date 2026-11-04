@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "pixel-buddy",
-      "source": "./"
+      "source": "./pixel-buddy"
     }
   ],
   "metadata": {

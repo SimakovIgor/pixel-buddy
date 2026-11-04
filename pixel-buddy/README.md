@@ -97,16 +97,24 @@ Only for what a click cannot do:
 | `/buddy help` | the list of clicks and commands |
 | `/buddy demo` | every reaction in 25 seconds |
 
-## Privacy and cost
+## What it runs and sends
 
-- No tokens and no network by default. The only model call is the word explanation: `haiku`, and only when you select
-  a word and click the buddy
-- Everything stays on this machine, in the plugin store of Claude Code: the buddy, the theme, and a short status of
-  each open session so your other sessions can show who waits for you. That status holds the folder, the branch, the
-  task key from the branch name, the thread title, the first words of your first prompt and the last line of Claude's
-  answer. The entry of a closed session is removed after a day
-- To name a session by its thread title it looks up the session's transcript under `~/.claude/projects` with `find`
-  and `grep`, reading the title rows only
+- **No tokens and no network calls of its own by default.** The one model call is the word explanation: when you click
+  the buddy while a word is selected, it reads that selection with `$.ui.selection()` and sends the word, up to 80
+  characters, to `haiku` through Claude Code's own model access. Nothing else leaves your machine
+- **Programs it runs**, each with fixed arguments and a 3 second limit:
+  - `git rev-parse --abbrev-ref HEAD` in the session's folder, to show the branch and its task key
+  - `find <config>/projects -maxdepth 2 -name <session id>.jsonl`, to locate this session's transcript, where
+    `<config>` is `CLAUDE_CONFIG_DIR` or `~/.claude`
+  - `grep -o -E` with the pattern of a thread title row (`"aiTitle":"…"` or `"customTitle":"…"`) on that transcript,
+    to name the session by its thread title. It reads those rows only
+- **What it reads:** the first words of your first prompt in the session, to name a session that has no title yet
+- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy, the theme, and a short status
+  of each open session so your other sessions can show who waits for you. That status holds the folder, the branch,
+  the task key from the branch name, the thread title, the first words of your first prompt and the last line of
+  Claude's answer. The entry of a closed session is removed after a day
+- **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
+  permissions or settings. The `/buddy` command is the one it adds
 
 ## How it works
 
@@ -123,17 +131,14 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
 
 ## Development
 
-```
-git clone https://github.com/SimakovIgor/pixel-buddy
-claude --plugin-dir pixel-buddy
-```
+The repository holds the plugin in `pixel-buddy/` and its tests in `tests/`, outside the plugin, so installing the
+plugin does not bring the tests along. From the root of a clone:
 
-The session reloads the mod each time you save a file. Tests and checks:
-
-```
-claude plugin test pixel-buddy
-claude plugin validate pixel-buddy
-```
+| Task | Command |
+| --- | --- |
+| run the plugin in a session, reloading on save | `claude --plugin-dir pixel-buddy` |
+| run the tests on a temporary copy of the plugin | `sh tests/run.sh` |
+| check the manifest and the hooks module | `claude plugin validate --strict pixel-buddy` |
 
 ## Troubleshooting
 
