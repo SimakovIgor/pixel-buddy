@@ -1,0 +1,20 @@
+{
+  "name": "pixel-buddy",
+  "version": "0.1.0",
+  "description": "A pixel pet for your Claude Code footer: it hatches, reacts to your session, does tricks, naps when you are away and plays on clicks",
+  "license": "MIT",
+  "author": {
+    "name": "Igor Simakov"
+  },
+  "homepage": "https://github.com/SimakovIgor/pixel-buddy",
+  "repository": "https://github.com/SimakovIgor/pixel-buddy",
+  "keywords": [
+    "pet",
+    "buddy",
+    "pixel-art",
+    "mod",
+    "tamagotchi",
+    "fun",
+    "terminal"
+  ]
+}

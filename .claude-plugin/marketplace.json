@@ -1,0 +1,15 @@
+{
+  "name": "pixel-buddy",
+  "owner": {
+    "name": "Igor Simakov"
+  },
+  "plugins": [
+    {
+      "name": "pixel-buddy",
+      "source": "./"
+    }
+  ],
+  "metadata": {
+    "description": "Pixel buddy: a pixel pet that lives in the Claude Code footer"
+  }
+}
