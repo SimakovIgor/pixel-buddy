@@ -33,7 +33,7 @@ At the prompt of a terminal session, or with `claude plugin uninstall pixel-budd
 /plugin uninstall pixel-buddy
 ```
 
-To drop the marketplace as well: `/plugin marketplace remove pixel-buddy`. The buddy itself stays in Claude Code's
+To drop the marketplace as well: `/plugin marketplace remove simakovigor`. The buddy itself stays in Claude Code's
 plugin store under `~/.claude/plugins/store`: delete its `pixel-buddy` file there to start again from a new egg.
 
 ## Requirements
