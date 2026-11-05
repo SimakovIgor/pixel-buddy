@@ -68,8 +68,8 @@ and a buddy resting in the nest does not get hungry or lonely. Each window keeps
 
 ## Trophies
 
-Rare moments of your work earn trophies. Each one brings a gold cup and fireworks in its rarity color, a toast says
-what it was for, and the card shows your shelf.
+Rare moments of your work earn trophies. Each one brings a gold cup and fireworks in its rarity color, and a toast
+says what it was for.
 
 ![A gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](docs/trophy.gif)
 
@@ -84,8 +84,13 @@ what it was for, and the card shows your shelf.
 | Shiny! | legendary | a shiny buddy in your nest |
 | Legend | legendary | a legendary buddy in your nest |
 
-Six more are secret: `/buddy trophies` shows only their rarity until you find them. The code is open, but finding
-them yourself is more fun.
+Six more are secret: they show only a question mark until you find them. The code is open, but finding them yourself
+is more fun.
+
+`trophies` in the menu opens your trophy case above the prompt. Each trophy is a pixel badge: round for rare, a
+hexagon for epic, a shield for legendary. `/buddy trophies` also lists the hints for the ones still open.
+
+![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](docs/trophy-case.png)
 
 **Show it off.** `share` in the menu puts a card of your buddy on the clipboard, drawn in colored squares that every
 chat shows:
@@ -98,7 +103,7 @@ Noodle, my legendary octopus · level 3
 ⬜⬜🟪🟪🟪🟪🟪🟪⬜⬜
 ⬜🟥⬜🟥⬜⬜🟥⬜🟥⬜
 🟥⬜🟥⬜⬜⬜⬜🟥⬜🟥
-🏆 3 of 14 trophies, the latest: Night Owl
+🏆 3 of 14 trophies: 👑 🦉 ⚽
 Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy
 ```
 
@@ -139,6 +144,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | `card` | its card in a frame above the prompt: portrait, mood, level, belly, love and the trophy shelf |
 | `feed` | a berry. A full buddy says no thanks |
 | `buddies` | your nest: bring any buddy back to this window or hatch a new egg |
+| `trophies` | your trophy case above the prompt |
 | `share` | a card of your buddy and its trophies on the clipboard |
 | `theme` | calendar, winter, halloween or off |
 | `hide` | hides it in this window. `/buddy on` brings it back |
@@ -148,7 +154,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | Command | What it does |
 | --- | --- |
 | `/buddy` | its full card in the chat, stats and personality included |
-| `/buddy trophies` | the trophies you found and the ones still open |
+| `/buddy trophies` | opens the trophy case and lists the hints |
 | `/buddy share` | the share card, copied and printed |
 | `/buddy name <name>` | rename it |
 | `/buddy feed` | a berry |
@@ -178,7 +184,7 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
 - `hooks/band-client.tsx` animates the strip at 20 frames a second and skips frames that did not change
 - `hooks/scene.ts` paints with half-block pixels, two per terminal cell
 - `hooks/species.ts` the sprites, `hooks/buddy.ts` stats and the card, `hooks/lines.ts` what it says,
-  `hooks/trophies.ts` the trophies, `hooks/share.ts` the share card
+  `hooks/trophies.ts` the trophies, `hooks/badges.ts` their pixel badges, `hooks/share.ts` the share card
 
 ## Development
 

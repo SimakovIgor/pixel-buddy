@@ -34,6 +34,10 @@ Six are secret. Each one brings a gold cup and fireworks, and `share` copies a c
 
 ![A gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](pixel-buddy/docs/trophy.gif)
 
+Your trophy case opens from the menu, a pixel badge for each trophy:
+
+![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](pixel-buddy/docs/trophy-case.png)
+
 Eight species, and each one comes and goes in its own way:
 
 ![Cat, duck, ghost, octopus, axolotl, robot, ninja and penguin arrive and leave: running, hatching, fading, ink, bubbles, a rocket, smoke and a belly slide](pixel-buddy/docs/arrivals.gif)

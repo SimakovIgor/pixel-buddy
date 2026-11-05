@@ -2,8 +2,8 @@ import { levelOf, rarityOf } from './buddy'
 import type { Buddy } from './buddy'
 import { colorsOf } from './scene'
 import { speciesOf } from './species'
-import { TROPHIES, countOf, trophyOf } from './trophies'
-import type { Found, TrophyId } from './trophies'
+import { TROPHIES, countOf, emojisOf } from './trophies'
+import type { Found } from './trophies'
 
 export const REPO = 'github.com/SimakovIgor/pixel-buddy'
 
@@ -58,14 +58,11 @@ export const gridOf = (buddy: Buddy): string[] => {
     return cells.map(row => row.map(cell => cell ?? backdrop).join(''))
 }
 
-const latestOf = (found: Found): TrophyId | null =>
-    TROPHIES.map(one => one.id).filter(id => found[id] !== undefined).sort((a, b) => (found[b] ?? 0) - (found[a] ?? 0))[0] ?? null
-
 export const shareOf = (buddy: Buddy, found: Found): string => {
     const species = speciesOf(buddy.species).name
     const shine = buddy.isShiny === true ? ' shiny' : ''
-    const latest = latestOf(found)
-    const trophies = `🏆 ${countOf(found)} of ${TROPHIES.length} trophies${latest === null ? '' : `, the latest: ${trophyOf(latest).name}`}`
+    const count = countOf(found)
+    const trophies = `🏆 ${count} of ${TROPHIES.length} trophies${count === 0 ? '' : `: ${emojisOf(found)}`}`
 
     return [
         `${buddy.name}, my ${rarityOf(buddy.rarity).label}${shine} ${species} · level ${levelOf(buddy.xp ?? 0).level}`,

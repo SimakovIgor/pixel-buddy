@@ -7,6 +7,7 @@ import { paint } from './scene'
 import { SPECIES } from './species'
 import { commitTrophiesAt, nextTally } from './trophies'
 import { shareOf } from './share'
+import { trophyCaseOf } from './badges'
 import type { View } from './scene'
 
 const BAND = {
@@ -277,8 +278,8 @@ test('a right click anywhere on the band opens the menu, a second one closes it'
     await ui.pointer({ type: 'down', x: 20, y: 1, button: 'right', in: 'buddy-band' })
     const closed = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
 
-    expect(opened).toContain('"theme:"')
-    expect(closed).not.toContain('"theme:"')
+    expect(opened).toContain('"trophies"')
+    expect(closed).not.toContain('"trophies"')
     await ui.unmount()
 })
 
@@ -897,7 +898,7 @@ test('the right click menu starts with a summary line, card opens one framed car
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
     expect(card).toContain('"color":"#4aa8ff"')
-    expect(card).toContain('/buddy trophies')
+    expect(card).toContain('menu → trophies')
     expect(toasts[0]).toBe('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
     expect(again).toBeTruthy()
     expect(menuOpen).toContain('"label":"hide card"')
@@ -1059,7 +1060,7 @@ test('a commit deep in the night earns Night Owl once: a toast, fireworks, then 
     await ui.unmount()
 
     expect(trophiesIn(store)).toEqual(['night-owl'])
-    expect(toasts).toEqual(['Trophy: Night Owl, rare, for a commit between 2 and 5 at night. 1 of 14 found. Menu → share to show it off'])
+    expect(toasts).toEqual(['🦉 Trophy: Night Owl, rare, for a commit between 2 and 5 at night. 1 of 14 found. Menu → share to show it off'])
     expect(fireworks).toContain('"trophy":{"rarity":"rare"')
     expect(named).toContain('"text":"Night Owl!"')
 })
@@ -1076,9 +1077,10 @@ test('a legendary and a shiny buddy already in the nest earn Legend and Shiny! o
 
     expect(trophiesIn(store)).toEqual(['shiny', 'legend'])
     expect(result.text).toContain('Trophies: 2 of 14 found')
-    expect(result.text).toMatch(/◆ Legend, legendary: a legendary buddy in your nest\. Found \d{4}-\d{2}-\d{2}/)
-    expect(result.text).toContain('· Night Owl, rare: a commit between 2 and 5 at night')
-    expect(result.text).toContain('· ??? a secret epic one')
+    expect(result.text).toMatch(/👑 Legend · legendary · a legendary buddy in your nest · found \d{4}-\d{2}-\d{2}/)
+    expect(result.text).toContain('✨ Shiny! · legendary')
+    expect(result.text).toContain('○  Night Owl · rare · a commit between 2 and 5 at night')
+    expect(result.text).toContain('?  a secret epic one')
     expect(result.text).not.toContain('1337')
 })
 
@@ -1244,7 +1246,7 @@ test('the share card draws the buddy in colored squares, says its rarity, level 
     expect(grid.map(row => [...row].length)).toEqual([10, 10, 10, 10, 10, 10])
     expect(grid[3]).toBe('⬜🟧⬛🟧🟧🟧🟧⬛🟧⬜')
     expect(grid[5]).toBe('⬜⬜🟫🟫🟫🟫🟫🟫⬜⬜')
-    expect(lines[7]).toBe('🏆 2 of 14 trophies, the latest: Night Owl')
+    expect(lines[7]).toBe('🏆 2 of 14 trophies: 👑 🦉')
     expect(lines[8]).toBe('Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy')
     expect(shareOf({ ...NOODLE, species: 'ghost' } as Buddy, {}).split('\n')[2]).toBe('🟦🟦⬜⬜⬜⬜⬜⬜🟦🟦')
 })
@@ -1274,4 +1276,56 @@ test('share in the menu puts the card on the clipboard and says so, /buddy share
     expect(copies[0]).toContain('Noodle, my common ninja · level 1')
     expect(toasts).toEqual(['A card of Noodle is on your clipboard: paste it in any chat to show it off'])
     expect(printed.text).toBe(`Copy it from here:\n\n${copies[1]}`)
+})
+
+test('the trophy case paints found badges in their rarity color with their picture, open ones gray, and fits the width', () => {
+    const colorsOf = (cells: Uint32Array) => new Set(Array.from({ length: cells.length / 3 }, (_, i) => [cells[i * 3 + 1], cells[i * 3 + 2]]).flat())
+    const textOf = (made: { cells: Uint32Array; columns: number; rows: number }) => Array.from({ length: made.rows }, (_, row) =>
+        Array.from({ length: made.columns }, (_, x) => String.fromCodePoint(made.cells[(row * made.columns + x) * 3] ?? 0x20)).join('')).join('\n')
+    const none = trophyCaseOf({}, 84)
+    const owl = trophyCaseOf({ 'night-owl': 1 }, 84)
+    const narrow = trophyCaseOf({}, 40)
+
+    expect([none.columns, none.rows]).toEqual([82, 13])
+    expect([...colorsOf(none.cells)]).not.toContain(0x4aa8ff)
+    expect([...colorsOf(owl.cells)]).toContain(0x4aa8ff)
+    expect([...colorsOf(owl.cells)]).toContain(0x9a6a46)
+    expect([owl.cells[6 * 3 + 1], none.cells[6 * 3 + 1]]).toEqual([0x4aa8ff, 0x4a4d5e])
+    expect(textOf(none)).toContain('Night Owl')
+    expect(textOf(none)).toContain('???')
+    expect(textOf(none)).not.toContain('1337')
+    expect(narrow.columns).toBeLessThanOrEqual(40)
+})
+
+test('/buddy trophies and trophies in the menu open the case above the prompt, a sent prompt closes it', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE }, trophies: { 'night-owl': 1 } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('prompt.submit', (_, e) => ({ text: (e as { text: string }).text }))
+    const toasts = toastsOn(on)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    const above = await $.ui.mount(ABOVE)
+    await $.command.run({ command: 'buddy', args: 'trophies' } as Parameters<typeof $.command.run>[0])
+    await above.redraw()
+    const fromCommand = JSON.stringify(await above.find({ key: 'trophy-case' }) ?? null)
+    await $.prompt.submit({ text: 'next' } as Parameters<typeof $.prompt.submit>[0])
+    await above.redraw()
+    const afterPrompt = await above.find({ key: 'trophy-case' })
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const menu = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'trophies' }, { in: 'buddy-band' })
+    await above.redraw()
+    const fromMenu = await above.find({ type: 'Raster', key: 'trophy-badges' })
+    await ui.unmount()
+    await above.unmount()
+
+    expect(fromCommand).toContain('"key":"trophy-badges"')
+    expect(fromCommand).toContain('the latest: Night Owl')
+    expect(afterPrompt).toBeUndefined()
+    expect(menu).toContain('"label":"trophies"')
+    expect(fromMenu).toBeTruthy()
+    expect(toasts[0]).toBe('Trophy case opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
 })

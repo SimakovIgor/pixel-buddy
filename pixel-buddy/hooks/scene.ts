@@ -161,7 +161,7 @@ const EGG_ART = ['..eeee..', '.eeseee.', 'eeeeeese', 'eseeeeee', 'eeeeseee', '.e
 
 const cycle = <T>(list: readonly T[], i: number): T => list[((i % list.length) + list.length) % list.length] as T
 
-const scale = (color: number, k: number): number => {
+export const scale = (color: number, k: number): number => {
     const channel = (shift: number) => Math.max(0, Math.min(255, Math.round(((color >> shift) & 0xff) * k)))
 
     return (channel(16) << 16) | (channel(8) << 8) | channel(0)
@@ -173,9 +173,9 @@ const hash = (n: number): number => {
     return x - Math.floor(x)
 }
 
-type Canvas = { width: number; rows: number; base: number; pixels: Uint32Array; glyphs: Uint32Array; colors: Uint32Array }
+export type Canvas = { width: number; rows: number; base: number; pixels: Uint32Array; glyphs: Uint32Array; colors: Uint32Array }
 
-const canvasOf = (cols: number, rows: number, baseRows = 0): Canvas => ({
+export const canvasOf = (cols: number, rows: number, baseRows = 0): Canvas => ({
     width: cols,
     rows,
     base: baseRows,
@@ -184,7 +184,7 @@ const canvasOf = (cols: number, rows: number, baseRows = 0): Canvas => ({
     colors: new Uint32Array(cols * rows),
 })
 
-const dot = (c: Canvas, x: number, y: number, color: number, size = 1): void => {
+export const dot = (c: Canvas, x: number, y: number, color: number, size = 1): void => {
     for (let dy = 0; dy < size; dy++) {
         for (let dx = 0; dx < size; dx++) {
             const px = Math.round(x) * size + dx
@@ -204,7 +204,7 @@ const clearGlyph = (c: Canvas, x: number, row: number): void => {
     }
 }
 
-const write = (c: Canvas, x: number, row: number, text: string, color: number | ((i: number) => number)): void => {
+export const write = (c: Canvas, x: number, row: number, text: string, color: number | ((i: number) => number)): void => {
     const at = row + c.base;
     [...text].forEach((char, i) => {
         const px = Math.round(x) + i
@@ -1423,7 +1423,7 @@ const JUMPS: Record<SpeciesId, Hop> = {
     cat: sprint,
 }
 
-const toCells = (c: Canvas): Uint32Array => {
+export const toCells = (c: Canvas): Uint32Array => {
     const cells = new Uint32Array(c.width * c.rows * 3)
     for (let row = 0; row < c.rows; row++) {
         for (let x = 0; x < c.width; x++) {

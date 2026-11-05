@@ -17,27 +17,27 @@ export type TrophyId =
     | 'spooky'
     | 'new-year'
 
-export type Trophy = { id: TrophyId; name: string; rarity: Rarity; hint: string; isSecret: boolean }
+export type Trophy = { id: TrophyId; name: string; label: string; emoji: string; rarity: Rarity; hint: string; isSecret: boolean }
 
 export type Found = Partial<Record<TrophyId, number>>
 
 export type Tally = { day: string; streak: number }
 
 export const TROPHIES: readonly Trophy[] = [
-    { id: 'night-owl', name: 'Night Owl', rarity: 'rare', hint: 'a commit between 2 and 5 at night', isSecret: false },
-    { id: 'friday', name: 'Friday Deploy', rarity: 'rare', hint: 'a commit on a Friday after 6 in the evening', isSecret: false },
-    { id: 'comeback', name: 'Comeback', rarity: 'rare', hint: 'green tests soon after three failures in a row', isSecret: false },
-    { id: 'ball', name: 'Ball Champ', rarity: 'rare', hint: 'ten balls caught in one minute', isSecret: false },
-    { id: 'regular', name: 'Regular', rarity: 'epic', hint: 'a snack every day for a week', isSecret: false },
-    { id: 'grown', name: 'All Grown Up', rarity: 'epic', hint: 'a buddy at level 10', isSecret: false },
-    { id: 'shiny', name: 'Shiny!', rarity: 'legendary', hint: 'a shiny buddy in your nest', isSecret: false },
-    { id: 'legend', name: 'Legend', rarity: 'legendary', hint: 'a legendary buddy in your nest', isSecret: false },
-    { id: 'deep-thought', name: 'Deep Thought', rarity: 'rare', hint: 'the 42nd answer in one session', isSecret: true },
-    { id: 'rubber-duck', name: 'Rubber Duck', rarity: 'rare', hint: 'a duck petted while things keep failing', isSecret: true },
-    { id: 'leet', name: '1337', rarity: 'epic', hint: 'a commit at 13:37', isSecret: true },
-    { id: 'hive', name: 'Hive Mind', rarity: 'epic', hint: 'eight subagents at once', isSecret: true },
-    { id: 'spooky', name: 'Spooky Commit', rarity: 'epic', hint: 'a commit on Halloween', isSecret: true },
-    { id: 'new-year', name: 'Happy New Commit', rarity: 'legendary', hint: 'a commit in the hour around midnight on New Year\'s Eve', isSecret: true },
+    { id: 'night-owl', name: 'Night Owl', label: 'Night Owl', emoji: '🦉', rarity: 'rare', hint: 'a commit between 2 and 5 at night', isSecret: false },
+    { id: 'friday', name: 'Friday Deploy', label: 'Friday', emoji: '🚀', rarity: 'rare', hint: 'a commit on a Friday after 6 in the evening', isSecret: false },
+    { id: 'comeback', name: 'Comeback', label: 'Comeback', emoji: '📈', rarity: 'rare', hint: 'green tests soon after three failures in a row', isSecret: false },
+    { id: 'ball', name: 'Ball Champ', label: 'Ball Champ', emoji: '⚽', rarity: 'rare', hint: 'ten balls caught in one minute', isSecret: false },
+    { id: 'regular', name: 'Regular', label: 'Regular', emoji: '📅', rarity: 'epic', hint: 'a snack every day for a week', isSecret: false },
+    { id: 'grown', name: 'All Grown Up', label: 'Grown Up', emoji: '🌳', rarity: 'epic', hint: 'a buddy at level 10', isSecret: false },
+    { id: 'shiny', name: 'Shiny!', label: 'Shiny!', emoji: '✨', rarity: 'legendary', hint: 'a shiny buddy in your nest', isSecret: false },
+    { id: 'legend', name: 'Legend', label: 'Legend', emoji: '👑', rarity: 'legendary', hint: 'a legendary buddy in your nest', isSecret: false },
+    { id: 'deep-thought', name: 'Deep Thought', label: 'Thinker', emoji: '🧠', rarity: 'rare', hint: 'the 42nd answer in one session', isSecret: true },
+    { id: 'rubber-duck', name: 'Rubber Duck', label: 'Duck', emoji: '🦆', rarity: 'rare', hint: 'a duck petted while things keep failing', isSecret: true },
+    { id: 'leet', name: '1337', label: '1337', emoji: '💻', rarity: 'epic', hint: 'a commit at 13:37', isSecret: true },
+    { id: 'hive', name: 'Hive Mind', label: 'Hive Mind', emoji: '🐝', rarity: 'epic', hint: 'eight subagents at once', isSecret: true },
+    { id: 'spooky', name: 'Spooky Commit', label: 'Spooky', emoji: '🎃', rarity: 'epic', hint: 'a commit on Halloween', isSecret: true },
+    { id: 'new-year', name: 'Happy New Commit', label: 'New Year', emoji: '🎆', rarity: 'legendary', hint: 'a commit in the hour around midnight on New Year\'s Eve', isSecret: true },
 ]
 
 export const GROWN_LEVEL = 10
@@ -110,21 +110,28 @@ export const nextTally = (tally: Tally, now: number): Tally => {
 
 export const countOf = (found: Found): number => TROPHIES.filter(one => found[one.id] !== undefined).length
 
+const foundOrder = (found: Found): Trophy[] =>
+    TROPHIES.filter(one => found[one.id] !== undefined).sort((a, b) => (found[a.id] ?? 0) - (found[b.id] ?? 0))
+
+export const emojisOf = (found: Found): string => foundOrder(found).map(one => one.emoji).join(' ')
+
 export const toastOf = (id: TrophyId, found: Found): string => {
     const trophy = trophyOf(id)
 
-    return `Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found. Menu → share to show it off`
+    return `${trophy.emoji} Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found. Menu → share to show it off`
 }
 
 export const listOf = (found: Found): string => {
-    const lines = TROPHIES.map(one => {
-        const at = found[one.id]
-        if (at !== undefined) {
-            return `  ◆ ${one.name}, ${one.rarity}: ${one.hint}. Found ${dayKeyOf(at)}`
-        }
+    const open = TROPHIES.filter(one => found[one.id] === undefined).map(one => (one.isSecret
+        ? `  ?  a secret ${one.rarity} one`
+        : `  ○  ${one.name} · ${one.rarity} · ${one.hint}`))
+    const mine = foundOrder(found).map(one => `  ${one.emoji} ${one.name} · ${one.rarity} · ${one.hint} · found ${dayKeyOf(found[one.id] ?? 0)}`)
 
-        return one.isSecret ? `  · ??? a secret ${one.rarity} one` : `  · ${one.name}, ${one.rarity}: ${one.hint}`
-    })
-
-    return [`Trophies: ${countOf(found)} of ${TROPHIES.length} found`, ...lines, 'A secret one shows its name once you find it.'].join('\n')
+    return [
+        `Trophies: ${countOf(found)} of ${TROPHIES.length} found`,
+        ...mine,
+        ...(open.length === 0 ? [] : ['', 'Still to find:', ...open]),
+        '',
+        'A secret one shows its name once you find it. Menu → trophies opens the case, menu → share shows it off.',
+    ].join('\n')
 }

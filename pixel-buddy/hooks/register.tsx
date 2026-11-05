@@ -13,6 +13,7 @@ import type { SpeciesId } from './species'
 import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, foundOf, listOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
 import type { Found, TrophyId } from './trophies'
 import { shareOf } from './share'
+import { trophyCaseOf } from './badges'
 
 const CLIENT_KEY = 'buddy-band'
 const PET_PREFIX = 'pet:'
@@ -115,6 +116,7 @@ let activeSince = 0
 let lastActiveAt = 0
 let joy: { what: string; at: number } | null = null
 let cardAt: number | null = null
+let caseAt: number | null = null
 let cardDrawnAt = 0
 let isCardInChat = false
 let lastMenuKey = ''
@@ -161,8 +163,9 @@ const menuOf = (): Menu | null => {
         cardAt === null ? { key: 'card', label: 'card', isOn: false } : { key: 'card-close', label: 'hide card', isOn: true },
         { key: 'feed', label: 'feed', isOn: false },
         { key: 'nest', label: 'buddies', isOn: false },
+        caseAt === null ? { key: 'trophies', label: 'trophies', isOn: false } : { key: 'trophies-close', label: 'hide trophies', isOn: true },
         { key: 'share', label: 'share', isOn: false },
-        { key: 'theme', label: `theme: ${theme}`, isOn: theme !== 'auto' && theme !== 'off' },
+        { key: 'theme', label: 'theme', isOn: theme !== 'auto' && theme !== 'off' },
         { key: 'hide', label: 'hide', isOn: false },
         { key: 'close', label: '×', isOn: false },
     ]
@@ -433,11 +436,21 @@ const cherish = ($: EngineInterface, amount: number, now: number): void => {
     }
 }
 
+const PANEL_HINT = 'Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt'
+
+const openCase = ($: EngineInterface, now: number): void => {
+    caseAt = now
+    cardAt = null
+    sayText('my trophies are up there ↑', now)
+    $.ui.toast(`Trophy case opened above the prompt. ${PANEL_HINT}`)
+}
+
 const openCard = ($: EngineInterface, now: number): void => {
     cardAt = now
+    caseAt = null
     isCardInChat = false
     sayText('my card is up there ↑', now)
-    $.ui.toast('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
+    $.ui.toast(`Card opened above the prompt. ${PANEL_HINT}`)
 }
 
 const cardInChat = ($: EngineInterface, now: number): void => {
@@ -498,9 +511,33 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                 {TROPHIES.map(one => (found[one.id] === undefined
                     ? <Text key={one.id} dimColor>·</Text>
                     : <Text key={one.id} color={hexOf(rarityOf(one.rarity).color)}>◆</Text>))}
-                <Text dimColor> {countOf(found)} of {TROPHIES.length} · /buddy trophies</Text>
+                <Text dimColor> {countOf(found)} of {TROPHIES.length} · menu → trophies</Text>
             </Box>
             <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
+        </Box>
+    )
+}
+
+const CASE_GOLD = 0xffcf3f
+
+const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: number): RenderElement | null => {
+    if (caseAt === null || e.surface !== 'terminal') {
+        return null
+    }
+    const { Box, Text, Raster } = $.ui.resolve(e)
+    const shown = trophyCaseOf(found, Math.min(width, 92) - 4)
+    const latest = TROPHIES.filter(one => found[one.id] !== undefined).sort((a, b) => (found[b.id] ?? 0) - (found[a.id] ?? 0))[0]
+
+    return (
+        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown.columns + 4}>
+            <Box flexDirection="row">
+                <Text color={hexOf(CASE_GOLD)} weight="bold">trophies </Text>
+                <Text>{countOf(found)} of {TROPHIES.length}</Text>
+                <Text dimColor>{latest === undefined ? ' · rare moments of your work earn them' : ` · the latest: ${latest.name}, ${latest.hint}`}</Text>
+            </Box>
+            <Text> </Text>
+            {Raster({ key: 'trophy-badges', columns: shown.columns, rows: shown.rows, cells: encode(shown.cells) })}
+            <Text dimColor>/buddy trophies lists the hints · menu → share shows them off</Text>
         </Box>
     )
 }
@@ -706,6 +743,10 @@ const frame = async ($: EngineInterface): Promise<void> => {
         cardAt = null
         $.ui.invalidate('ui.render')
     }
+    if (caseAt !== null && now - caseAt > CARD_MS) {
+        caseAt = null
+        $.ui.invalidate('ui.render')
+    }
     if (bubble !== null && now - bubble.at > BUBBLE_MS) {
         bubble = null
     }
@@ -849,7 +890,7 @@ const help = (): string => [
     '  double click      its own move',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu: card, feed, buddies, share, theme, hide',
+    '  right click       menu: card, feed, buddies, trophies, share, theme, hide',
     '',
     'It eats what your work drops: a cookie for an answer, a fish for green tests, a cake for a commit.',
     'Snacks give xp and levels. Every buddy you hatch stays in your nest, each window keeps its own.',
@@ -857,7 +898,7 @@ const help = (): string => [
     '',
     'Commands:',
     '  /buddy               its full card with stats and personality',
-    '  /buddy trophies      the trophies you found and the ones still open',
+    '  /buddy trophies      the trophy case and the hints for the ones still open',
     '  /buddy share         copy a card of your buddy to show it off',
     '  /buddy name <name>   rename it',
     '  /buddy feed          a berry',
@@ -883,6 +924,10 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         return feedByHand(now)
     }
     if (arg === 'trophies') {
+        caseAt = now
+        cardAt = null
+        $.ui.invalidate('ui.render')
+
         return listOf(found)
     }
     if (arg === 'share') {
@@ -972,6 +1017,12 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     } else if (key === 'card-close') {
         menuPage = null
         cardAt = null
+    } else if (key === 'trophies') {
+        menuPage = null
+        openCase($, now)
+    } else if (key === 'trophies-close') {
+        menuPage = null
+        caseAt = null
     } else if (key === 'feed') {
         menuPage = null
         feedByHand(now)
@@ -996,6 +1047,7 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         await perform($, now, 'hatch', species === 'random' ? [] : [species])
     } else if (key === 'theme') {
         await perform($, now, 'theme', [])
+        sayText(`theme: ${theme}`, now)
     } else if (key === 'hide') {
         menuPage = null
         await perform($, now, 'off', [])
@@ -1077,8 +1129,9 @@ export const register: Register = on => {
         const now = await $.clock.now()
         ensureTimer($, now)
         markActive(now)
-        if (cardAt !== null) {
+        if (cardAt !== null || caseAt !== null) {
             cardAt = null
+            caseAt = null
             $.ui.invalidate('ui.render')
         }
         if (now - lastSeenAt > SLEEP_AFTER_MS) {
@@ -1285,7 +1338,7 @@ export const register: Register = on => {
         const now = await $.clock.now()
         aboveDraws += 1
         const isInFooter = e.surface === 'terminal' && (footerAt === 0 ? now - startedAt < FOOTER_WAIT_MS : isFooterFit)
-        const card = isShown(now) && !e.props.hasSurvey ? drawCard($, e, now, e.props.bodyColumns) : null
+        const card = isShown(now) && !e.props.hasSurvey ? drawCard($, e, now, e.props.bodyColumns) ?? drawCase($, e, now, e.props.bodyColumns) : null
         const { Box } = $.ui.resolve(e)
         const theirs = card === null ? await next(e) : <Box key="buddy-above" flexDirection="column">{card}{await next(e)}</Box>
         if (!isShown(now) || e.props.hasSurvey || isInFooter) {
