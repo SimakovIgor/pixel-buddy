@@ -60,6 +60,7 @@ Eight species. A buddy hatches with a name, a rarity and five stats, all rolled 
   higher stats
 - **Stats** are DEBUGGING, PATIENCE, CHAOS, WISDOM and SNARK. The highest one sets its personality. With CHAOS or SNARK
   on top it teases you, otherwise it cheers you on
+- **Shiny:** 1 egg in 100 hatches a buddy in other colors that twinkles now and then
 
 One buddy per machine, shared by all your sessions. `change buddy` in the menu hatches a new one.
 
@@ -67,6 +68,11 @@ One buddy per machine, shared by all your sessions. `change buddy` in the menu h
 
 ![It naps under a sakura, purrs when petted, lands on a rocket flame, slides on its belly, juggles and blows bubbles](docs/moments.png)
 
+- **Eats what your work drops.** Each answer from Claude drops a cookie into the strip, green tests drop a fish, a
+  commit or a finished plan drops a cake. The buddy walks over and eats it: snacks give it xp, and xp gives it levels.
+  Its card shows the level and how full its belly is
+- **Never starves.** The belly empties slowly, over a night. A hungry buddy asks for a snack now and then, and a berry
+  from the menu fills it up. Nothing bad happens to it if you forget
 - **Stays out of the way.** It sits at the right end of the footer, so Claude's spinner stays right above the prompt and
   the footer keeps its height
 - **Comes and goes in its own way.** The duck hatches from an egg and flies off, the penguin slides in and out on its
@@ -91,7 +97,8 @@ One buddy per machine, shared by all your sessions. `change buddy` in the menu h
 | double click | its own move: the ninja teleports in smoke, the robot flies over, the duck dives, the penguin slides on its belly, the cat dashes, the ghost fades over, the octopus goes through ink, the axolotl through bubbles |
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
-| right click | the menu: `change buddy` hatches a new one of the species you pick, `theme`, `hide` |
+| click a snack | it hurries over and eats it with hearts |
+| right click | the menu: `feed` gives it a berry, `change buddy` hatches a new one of the species you pick, `theme`, `hide` |
 
 ## Commands
 
@@ -99,7 +106,8 @@ Only for what a click cannot do:
 
 | Command | What it does |
 | --- | --- |
-| `/buddy` | its card in the chat: rarity, stats, personality |
+| `/buddy` | its card in the chat: level, belly, rarity, stats, personality |
+| `/buddy feed` | give it a berry |
 | `/buddy name <name>` | rename it |
 | `/buddy on` | bring it back after `hide`, which hides it in the current session only |
 | `/buddy help` | the list of clicks and commands |
@@ -109,8 +117,8 @@ Only for what a click cannot do:
 
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
-- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy with its name and stats, the
-  theme and the hat switch. Session entries an older version kept are removed when a session starts
+- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy with its name, stats, xp and
+  belly, the theme and the hat switch. Session entries an older version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,

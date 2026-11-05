@@ -8,12 +8,51 @@ export const STAT_NAMES = ['DEBUGGING', 'PATIENCE', 'CHAOS', 'WISDOM', 'SNARK'] 
 
 export type StatName = (typeof STAT_NAMES)[number]
 
+export type Belly = { value: number; at: number }
+
 export type Buddy = {
     name: string
     species: SpeciesId
     rarity: Rarity
     stats: Record<StatName, number>
     hatchedAt: number
+    xp?: number
+    belly?: Belly
+    isShiny?: boolean
+}
+
+export type SnackKind = 'cookie' | 'fish' | 'cake' | 'berry'
+
+export const SNACKS: Record<SnackKind, { xp: number; food: number }> = {
+    cookie: { xp: 1, food: 6 },
+    fish: { xp: 3, food: 15 },
+    cake: { xp: 5, food: 20 },
+    berry: { xp: 0, food: 15 },
+}
+
+export const HUNGRY = 25
+export const FULL = 90
+const FRESH_BELLY = 60
+const BELLY_PER_HOUR = 8
+const SHINY_ODDS = 0.01
+
+export const fullnessOf = (buddy: Buddy, now: number): number => {
+    const belly = buddy.belly ?? { value: FRESH_BELLY, at: now }
+
+    return Math.max(0, Math.min(100, belly.value - ((now - belly.at) / 3600000) * BELLY_PER_HOUR))
+}
+
+export type Level = { level: number; into: number; need: number }
+
+export const levelOf = (xp: number): Level => {
+    let level = 1
+    let rest = Math.max(0, Math.floor(xp))
+    while (rest >= level * 10) {
+        rest -= level * 10
+        level += 1
+    }
+
+    return { level, into: rest, need: level * 10 }
 }
 
 type RarityInfo = { id: Rarity; weight: number; stars: number; floor: number; color: number; label: string }
@@ -72,6 +111,9 @@ export const hatch = (random: () => number, now: number, species?: SpeciesId): B
         rarity,
         stats,
         hatchedAt: now,
+        xp: 0,
+        belly: { value: 100, at: now },
+        isShiny: random() < SHINY_ODDS,
     }
 }
 
@@ -86,15 +128,26 @@ const dateOf = (at: number): string =>
 
 const ODDS = RARITIES.map(one => `${one.label} ${one.weight}%`).join(' · ')
 
-export const cardOf = (buddy: Buddy): string => {
+const meter = (into: number, need: number): string => {
+    const filled = Math.round((into / need) * 10)
+
+    return '▰'.repeat(filled) + '▱'.repeat(10 - filled)
+}
+
+export const cardOf = (buddy: Buddy, now: number): string => {
     const rarity = rarityOf(buddy.rarity)
     const species = speciesOf(buddy.species)
     const stars = '★'.repeat(rarity.stars) + '☆'.repeat(5 - rarity.stars)
     const peak = peakOf(buddy)
+    const { level, into, need } = levelOf(buddy.xp ?? 0)
+    const belly = Math.round(fullnessOf(buddy, now))
 
     return [
-        `${buddy.name} · ${species.name} · ${stars} ${rarity.label}`,
+        `${buddy.name} · ${species.name} · ${stars} ${rarity.label}${buddy.isShiny === true ? ' · ✦ shiny, 1 in 100' : ''}`,
         `hatched ${dateOf(buddy.hatchedAt)}`,
+        '',
+        `level ${String(level).padEnd(4)}${meter(into, need)} ${into}/${need} xp, earned from your work`,
+        `belly ${bar(belly)} ${belly}%${belly < HUNGRY ? ', hungry: right click → feed' : ''}`,
         '',
         `stars are rarity, rolled at hatching: ${ODDS}`,
         'rarer buddies roll higher stats',

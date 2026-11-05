@@ -1,6 +1,6 @@
 import type { StatName } from './buddy'
 
-export type Moment = 'error' | 'loop' | 'marathon' | 'plan' | 'agents' | 'commit' | 'green' | 'thinking' | 'back'
+export type Moment = 'error' | 'loop' | 'marathon' | 'plan' | 'agents' | 'commit' | 'green' | 'thinking' | 'back' | 'hungry'
 
 type Lines = readonly string[]
 
@@ -40,6 +40,10 @@ const LINES: Record<Moment, { calm: Lines; snark: Lines }> = {
     back: {
         calm: ['oh, you\'re back!', 'missed you'],
         snark: ['look who\'s back', 'I didn\'t touch anything. honest'],
+    },
+    hungry: {
+        calm: ['my tummy rumbles… snack?', 'a berry would be nice'],
+        snark: ['I could eat a whole build', 'feed me and I\'ll review your PR'],
     },
 }
 

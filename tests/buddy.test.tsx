@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { cardOf, fullnessOf, hatch, levelOf } from './buddy'
+import type { Buddy } from './buddy'
 import { isTestRun } from './register'
 import { paint } from './scene'
 import { SPECIES } from './species'
@@ -299,7 +301,7 @@ test('a bubble said on waking up is drawn over the fading tree, its frame whole'
         pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
         bubble: { text: 'hi there', age: 2000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
         action: null, toy: null, spark: null, season: null, menu: null,
-        nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null,
+        nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null, food: null, isShiny: false,
     }
     const cells = paint(view)
     const middleRow = Array.from({ length: 64 }, (_, x) => String.fromCodePoint(cells[(64 + x) * 3] ?? 0x20)).join('')
@@ -313,7 +315,7 @@ test('every species does its own trick beside it while it works', () => {
             t: 2000, cols: 64, species, rarity: 'common', mood: 'tool', moodAge: 0,
             pose: { x: 34, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
             bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
-            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null,
+            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false,
         }
 
         return [...paint(view)].join(',')
@@ -394,7 +396,7 @@ const footerView = (overrides: Partial<View>): View => ({
     t: 1000, cols: 49, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
     pose: { x: 38, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
     bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, action: null, toy: null,
-    spark: null, season: null, menu: null, nap: null, trail: [], leave: null,
+    spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false,
     ...overrides,
 })
 
@@ -621,3 +623,131 @@ test('an open menu redraws the strip once, not on every frame', async ($, on) =>
     expect(redraws).toBe(settled)
     await ui.unmount()
 })
+
+test('levels need ten xp more each time, and the card shows how far the next one is', () => {
+    expect([0, 9, 10, 29, 30, 100].map(xp => levelOf(xp))).toEqual([
+        { level: 1, into: 0, need: 10 },
+        { level: 1, into: 9, need: 10 },
+        { level: 2, into: 0, need: 20 },
+        { level: 2, into: 19, need: 20 },
+        { level: 3, into: 0, need: 30 },
+        { level: 5, into: 0, need: 50 },
+    ])
+    const card = cardOf({ ...NOODLE, xp: 33, belly: { value: 20, at: 0 } } as Buddy, 0)
+    expect(card).toContain('level 3   ▰▱▱▱▱▱▱▱▱▱ 3/30 xp, earned from your work')
+    expect(card).toContain('belly ██░░░░░░░░ 20%, hungry: right click → feed')
+})
+
+test('the belly empties slowly over hours, never below zero, and a new egg starts full', () => {
+    const hour = 3600000
+    const fed = { ...NOODLE, belly: { value: 100, at: 0 } } as Buddy
+
+    expect(fullnessOf(fed, 5 * hour)).toBe(60)
+    expect(fullnessOf(fed, 48 * hour)).toBe(0)
+    expect(fullnessOf(NOODLE as Buddy, 0)).toBe(60)
+    expect(hatch(() => 0.5, 0)).toMatchObject({ xp: 0, belly: { value: 100, at: 0 }, isShiny: false })
+    expect(hatch(() => 0.001, 0).isShiny).toBe(true)
+})
+
+const snackOf = async (ui: { find: (query: object) => Promise<unknown> }): Promise<{ kind: string; at: number } | null> => {
+    const found = /"snack":\{"kind":"(\w+)","at":(\d+)\}/.exec(JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' })))
+
+    return found === null ? null : { kind: found[1] ?? '', at: Number(found[2]) }
+}
+
+test('an answer from Claude drops a cookie, and eating it gives xp and fills the belly in the store', async ($, on) => {
+    let now = Date.now()
+    stubEngine(on, () => now)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, xp: 9, belly: { value: 50, at: now } } }
+    storeOn(on, store)
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', () => ({ text: '' }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await $.turn.start({ text: 'go', turnId: 't1' } as Parameters<typeof $.turn.start>[0])
+    now += 5000
+    await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'done', text: 'done' } as unknown as Parameters<typeof $.turn.complete>[0])
+    await ui.redraw()
+    const snack = await snackOf(ui)
+    await ui.post({ type: 'ate', at: snack?.at ?? 0, kind: 'cookie', isHanded: false }, { in: 'buddy-band' })
+    await ui.redraw()
+
+    expect(snack?.kind).toBe('cookie')
+    expect(store.buddy).toMatchObject({ xp: 10, belly: { value: 56, at: now } })
+    expect(await snackOf(ui)).toBeNull()
+    expect(JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))).toContain('"text":"level 2!"')
+    await ui.unmount()
+})
+
+test('the buddy walks to a fallen snack and eats it by itself', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, xp: 0, belly: { value: 10, at: Date.now() } } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await $.command.run({ command: 'buddy', args: 'feed' } as Parameters<typeof $.command.run>[0])
+    await ui.redraw()
+    for (let elapsed = 0; elapsed < 3500 && (store.buddy as Buddy).xp === 0; elapsed += 50) {
+        await realPause(50)
+        await ui.advance(50)
+    }
+
+    expect((store.buddy as Buddy).belly?.value).toBeGreaterThan(20)
+    expect((store.buddy as Buddy).xp).toBe(1)
+    await ui.unmount()
+})
+
+test('feeding from the menu gives a berry to a hungry buddy, a full one says no thanks', async ($, on) => {
+    const now = Date.now()
+    stubEngine(on, () => now)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, belly: { value: 95, at: now } } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'menu', key: 'feed' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const full = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    store.buddy = { ...NOODLE, belly: { value: 10, at: now } }
+    await $.command.run({ command: 'buddy', args: 'hatch ninja' } as Parameters<typeof $.command.run>[0])
+    await ui.unmount()
+
+    expect(full).toContain('so full')
+    expect(full).toContain('"snack":null')
+})
+
+test('a hungry buddy asks for a snack once, not every few minutes', async ($, on) => {
+    let now = Date.now()
+    stubEngine(on, () => now, true)
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 10, at: now } } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    const asks: number[] = []
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    for (const minutes of [0, 2, 2, 2, 2, 2]) {
+        now += minutes * 60000 + 3000
+        await ui.post({ type: 'jump' }, { in: 'buddy-band' })
+        await ui.advance(300)
+        await ui.redraw()
+        const band = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+        asks.push(/eat a whole build|review your PR/.test(band) ? 1 : 0)
+    }
+    await ui.unmount()
+
+    expect(asks[0] + (asks[1] ?? 0)).toBe(1)
+    expect(asks.slice(2)).toEqual([0, 0, 0, 0])
+})
+
+test('a shiny buddy wears other colors and twinkles, and its card says so', () => {
+    const plain = footerView({ cols: 64, species: 'cat', t: 1000 })
+    const shiny = { ...plain, isShiny: true }
+
+    expect([...paint(shiny)].join(',')).not.toBe([...paint(plain)].join(','))
+    expect(cardOf({ ...NOODLE, isShiny: true } as Buddy, 0)).toContain('✦ shiny, 1 in 100')
+})
+

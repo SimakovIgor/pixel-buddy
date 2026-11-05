@@ -1,8 +1,8 @@
 {
   "name": "pixel-buddy",
   "displayName": "Pixel Buddy",
-  "version": "0.4.1",
-  "description": "A pixel pet for your Claude Code footer: it hatches, reacts to your session, does tricks, naps when you are away and plays on clicks",
+  "version": "0.5.0",
+  "description": "A pixel pet for your Claude Code footer: it hatches, eats what your work drops, levels up, does tricks, naps when you are away and plays on clicks",
   "license": "MIT",
   "author": {
     "name": "Igor Simakov"

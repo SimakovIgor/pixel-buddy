@@ -1,5 +1,5 @@
 import { rarityOf } from './buddy'
-import type { Rarity } from './buddy'
+import type { Rarity, SnackKind } from './buddy'
 import { NAP_H, SPRITE_H, SPRITE_W, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
@@ -49,6 +49,8 @@ export type View = {
     nap: Nap | null
     trail: readonly TrailPoint[]
     leave: Leave | null
+    food: FoodView | null
+    isShiny: boolean
 }
 
 export type Leave = { species: SpeciesId; age: number }
@@ -91,6 +93,7 @@ export const menuRowsOf = (menu: Menu | null, cols: number): number =>
 
 export type Season = 'winter' | 'halloween' | null
 export type Toy = { kind: 'ball' | 'shuriken'; x: number; y: number; age: number }
+export type FoodView = { kind: SnackKind; x: number; y: number; eatenAge: number | null }
 export type Spark = { x: number; y: number; age: number }
 
 export type Jump = { age: number; fromX: number; toX: number }
@@ -115,6 +118,31 @@ const CRACK = 0x3a2f2a
 const BUBBLE_TEXT = 0xece8f5
 const BUBBLE_EDGE = 0x6c6880
 const WHITE = 0xffffff
+const FACE_CELLS = ['e', 'c', 'm']
+const SHINY_TURN = (160 * Math.PI) / 180
+
+const shineOf = (color: number): number => {
+    const r = (color >> 16) & 255
+    const g = (color >> 8) & 255
+    const b = color & 255
+    const cos = Math.cos(SHINY_TURN)
+    const sin = Math.sin(SHINY_TURN)
+    const clamp = (value: number): number => Math.max(0, Math.min(255, Math.round(value)))
+    const nr = clamp(r * (0.213 + cos * 0.787 - sin * 0.213) + g * (0.715 - cos * 0.715 - sin * 0.715) + b * (0.072 - cos * 0.072 + sin * 0.928))
+    const ng = clamp(r * (0.213 - cos * 0.213 + sin * 0.143) + g * (0.715 + cos * 0.285 + sin * 0.14) + b * (0.072 - cos * 0.072 - sin * 0.283))
+    const nb = clamp(r * (0.213 - cos * 0.213 - sin * 0.787) + g * (0.715 - cos * 0.715 + sin * 0.715) + b * (0.072 + cos * 0.928 + sin * 0.072))
+
+    return (nr << 16) | (ng << 8) | nb
+}
+
+const paletteOf = (v: View): Record<string, number> => {
+    const colors = speciesOf(v.species).colors
+    if (!v.isShiny) {
+        return colors
+    }
+
+    return Object.fromEntries(Object.entries(colors).map(([cell, color]) => [cell, FACE_CELLS.includes(cell) ? color : shineOf(color)]))
+}
 const RED = 0xff4a5a
 const SLEEP = 0x8fa8ff
 const HEART = 0xff6b9a
@@ -287,10 +315,11 @@ const liftOf = (v: View): number => {
 
 const drawSprite = (c: Canvas, v: View, x0: number, size = 1, light = 1): void => {
     const species = speciesOf(v.species)
+    const palette = paletteOf(v)
     const frame = cycle(species.frames, frameIndex(v)).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
-    const body = species.colors.b ?? WHITE
-    const shade = species.colors.s ?? body
-    const eye = eyeColor(v, body, shade, species.colors.e ?? 0)
+    const body = palette.b ?? WHITE
+    const shade = palette.s ?? body
+    const eye = eyeColor(v, body, shade, palette.e ?? 0)
     const x = x0 + shakeOf(v)
     const y = v.jump === null ? liftOf(v) : v.pose.lift
     const eyes: Array<[number, number]> = []
@@ -305,7 +334,7 @@ const drawSprite = (c: Canvas, v: View, x0: number, size = 1, light = 1): void =
             return
         }
         const isGleam = cell === 'k' && dy === Math.floor(v.t / 110) % 6
-        dot(c, x + dx, y + dy, scale(cell === 'e' ? body : isGleam ? WHITE : species.colors[cell] ?? body, light), size)
+        dot(c, x + dx, y + dy, scale(cell === 'e' ? body : isGleam ? WHITE : palette[cell] ?? body, light), size)
     }))
     const isLooking = v.mood === 'idle' || v.mood === 'think'
     eyes.forEach(([dx, dy]) => {
@@ -398,15 +427,16 @@ const drawPetals = (c: Canvas, v: View): void => {
 
 const drawNap = (c: Canvas, v: View, x0: number): void => {
     const species = speciesOf(v.species)
+    const palette = paletteOf(v)
     const isLeft = isTreeLeftOf(v.nap?.x ?? x0)
-    const body = species.colors.b ?? WHITE
-    const lid = species.colors.z ?? species.colors.s ?? body
+    const body = palette.b ?? WHITE
+    const lid = palette.z ?? palette.s ?? body
     const isInhale = Math.floor(v.t / BREATH_MS) % 2 === 0
     species.nap.forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell === '.' || (cell === '^' && !isInhale)) {
             return
         }
-        const color = cell === 'e' ? lid : cell === '^' ? body : species.colors[cell] ?? body
+        const color = cell === 'e' ? lid : cell === '^' ? body : palette[cell] ?? body
         dot(c, isLeft ? x0 + dx : x0 + SPRITE_W - 1 - dx, NAP_TOP + dy, color)
     }))
     const hat = v.season === null ? null : HATS[v.season]
@@ -434,7 +464,8 @@ const ghostsOf = (v: View, x0: number): TrailPoint[] => {
 
 const drawTrail = (c: Canvas, v: View, x0: number): void => {
     const species = speciesOf(v.species)
-    const body = species.colors.b ?? WHITE
+    const palette = paletteOf(v)
+    const body = palette.b ?? WHITE
     const isDark = Math.max((body >> 16) & 0xff, (body >> 8) & 0xff, body & 0xff) < 0x60
     const tint = isDark ? scale(body, 2.6) : body
     const frame = (species.frames[0] ?? []).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
@@ -818,6 +849,46 @@ const drawToy = (c: Canvas, v: View): void => {
     dot(c, x, y, STEEL_CORE)
 }
 
+const FOODS: Record<SnackKind, readonly (readonly number[])[]> = {
+    cookie: [[0xd99a55, 0x6b4426], [0x6b4426, 0xd99a55]],
+    fish: [[0x3a86d6, 0x6cc0ff, 0x6cc0ff], [0x3a86d6, 0x4aa8ff, 0x1d1b26]],
+    cake: [[0xff4a5a, 0xff9fb8], [0xfff1d6, 0xfff1d6]],
+    berry: [[0x5fd17a, -1], [0xff4a5a, 0xc2283a]],
+}
+
+const drawFood = (c: Canvas, v: View): void => {
+    const food = v.food
+    if (food === null) {
+        return
+    }
+    const sprite = FOODS[food.kind] ?? []
+    const base = food.y - sprite.length + 2
+    if (food.eatenAge === null) {
+        sprite.forEach((line, dy) => line.forEach((color, dx) => {
+            if (color >= 0) {
+                dot(c, food.x + dx, base + dy, color)
+            }
+        }))
+
+        return
+    }
+    const p = food.eatenAge / 500
+    const crumb = sprite[sprite.length - 1]?.[0] ?? WHITE
+    for (let k = 0; k < 4; k++) {
+        const way = k % 2 === 0 ? -1 : 1
+        dot(c, food.x + way * (1 + p * (2 + k)), food.y + 1 - Math.sin(p * Math.PI) * (1 + (k % 2)), scale(crumb, 1 - p * 0.6))
+    }
+}
+
+const drawShine = (c: Canvas, v: View, x0: number): void => {
+    if (!v.isShiny || v.t % 2600 > 520) {
+        return
+    }
+    const spot = Math.floor(v.t / 2600) % 3
+    const x = spot === 0 ? x0 - 1 : spot === 1 ? x0 + SPRITE_W : x0 + SPRITE_W / 2
+    write(c, Math.round(x), spot === 2 ? 0 : 1, '✦', 0xffe9a8)
+}
+
 const drawSpark = (c: Canvas, v: View): void => {
     if (v.spark === null || v.spark.age > SPARK_MS) {
         return
@@ -940,8 +1011,9 @@ const drawAura = (c: Canvas, v: View, x0: number): void => {
 
 const drawMinis = (c: Canvas, v: View, x0: number): void => {
     const species = speciesOf(v.species)
-    const color = species.colors.b ?? WHITE
-    const eye = species.colors.e ?? 0
+    const palette = paletteOf(v)
+    const color = palette.b ?? WHITE
+    const eye = palette.e ?? 0
     const behind = v.pose.isFacingLeft ? x0 + SPRITE_W + 1 : x0 - 3
     const step = v.pose.isFacingLeft ? 3 : -3
     for (let k = 0; k < Math.min(3, v.agents); k++) {
@@ -1205,9 +1277,10 @@ const dive: Hop = (c, v, jump) => {
 
 const drawBelly = (c: Canvas, v: View, x: number, isHeadRight: boolean): void => {
     const species = speciesOf(v.species)
+    const palette = paletteOf(v)
     species.nap.forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell !== '.' && cell !== '^') {
-            dot(c, isHeadRight ? x + dx : x + SPRITE_W - 1 - dx, SPRITE_H - NAP_H + dy, species.colors[cell] ?? WHITE)
+            dot(c, isHeadRight ? x + dx : x + SPRITE_W - 1 - dx, SPRITE_H - NAP_H + dy, palette[cell] ?? WHITE)
         }
     }))
 }
@@ -1315,7 +1388,11 @@ export const paint = (v: View): Uint32Array => {
         drawPetals(c, v)
         drawSwing(c, v, x0)
     }
+    if (isHere) {
+        drawShine(c, v, x0)
+    }
     drawBubble(c, v, x0)
+    drawFood(c, v)
     drawToy(c, v)
     drawSpark(c, v)
     drawHearts(c, v, x0)
