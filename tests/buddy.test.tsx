@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { cardOf } from './buddy'
 import { isTestRun } from './register'
-import { noteLinesOf, paint, petMinXOf } from './scene'
+import { noteLinesOf, paint, rowsOf } from './scene'
 import { SPECIES } from './species'
 import type { View } from './scene'
 
@@ -204,44 +204,6 @@ test('a caught ball makes the buddy answer in a bubble', async ($, on) => {
     await ui.unmount()
 })
 
-test('a session waiting for you shows up on the left and its click lists what it waits for', async ($, on) => {
-    stubEngine(on)
-    const mine = { name: 'Mochi', species: 'ninja', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 }
-    const other = {
-        name: 'Ghosty',
-        species: 'ghost',
-        rarity: 'common',
-        status: 'permission',
-        reason: 'Claude needs your permission to use Bash',
-        since: Date.now() - 120000,
-        place: { folder: 'checkout-service', branch: 'feature/PAY-142-refunds', task: 'PAY-142' },
-        updatedAt: Date.now(),
-    }
-    const store: Record<string, unknown> = { buddy: mine, 'session:other': other }
-    on('store.get', (_, e) => ({ value: store[(e as { key: string }).key] }))
-    on('store.set', (_, e) => {
-        const { key, value } = e as { key: string; value: unknown }
-        store[key] = value
-
-        return { value: undefined }
-    })
-    on('store.keys', () => ({ value: Object.keys(store) }))
-    on('session.id', () => ({ value: 'me' }))
-    on('session.root', () => ({ value: '/work/billing-service' }))
-    on('fs.read', (_, e) => (e.path === '/work/billing-service/.git/HEAD' ? { value: 'ref: refs/heads/feature/PAY-150-x\n' } : { deny: 'no such file' }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    await ui.post({ type: 'visitors' }, { in: 'buddy-band' })
-
-    expect(store['session:me']).toMatchObject({ name: 'Mochi', status: 'idle', place: { task: 'PAY-150' } })
-    const drawn = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
-    expect(drawn).toContain('"Waiting"')
-    expect(drawn).toContain('"you"')
-    expect(drawn).toContain('"PAY-142"')
-    await ui.unmount()
-})
-
 test('/buddy theme goes around calendar, winter, halloween and off', async ($, on) => {
     stubEngine(on)
     on('store.get', () => ({ value: undefined }))
@@ -297,68 +259,6 @@ test('the menu picks a species and hatches it', async ($, on) => {
     const hidden = await $.ui.mount(BAND)
     expect(await hidden.find({ key: 'buddy-band' })).toBeUndefined()
     await hidden.unmount()
-})
-
-test('a waiting session without a task key is named by its folder', async ($, on) => {
-    stubEngine(on)
-    const store: Record<string, unknown> = {
-        buddy: { name: 'Mochi', species: 'duck', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 },
-        'session:other': {
-            name: 'Mochi',
-            species: 'duck',
-            rarity: 'rare',
-            status: 'waiting',
-            reason: null,
-            since: Date.now() - 60000,
-            place: { folder: 'projects', branch: 'main', task: '' },
-            updatedAt: Date.now(),
-        },
-    }
-    on('store.get', (_, e) => ({ value: store[(e as { key: string }).key] }))
-    on('store.set', () => ({ value: undefined }))
-    on('store.keys', () => ({ value: Object.keys(store) }))
-    on('session.id', () => ({ value: 'me' }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    const drawn = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
-
-    expect(drawn).toContain('"projects"')
-    await ui.unmount()
-})
-
-test('waiting sessions are named by their task key or folder, each one, not by a count', async ($, on) => {
-    stubEngine(on)
-    const waiting = (place: { folder: string; branch: string; task: string }, since: number) => ({
-        name: 'Mochi',
-        species: 'duck',
-        rarity: 'rare',
-        status: 'waiting',
-        reason: null,
-        since,
-        place,
-        title: 'Handover notes for the new team',
-        updatedAt: Date.now(),
-    })
-    const store: Record<string, unknown> = {
-        buddy: { name: 'Mochi', species: 'duck', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 },
-        'session:content': waiting({ folder: 'api', branch: 'feature/PAY-12-refunds', task: 'PAY-12' }, Date.now() - 120000),
-        'session:music': waiting({ folder: 'synth', branch: 'main', task: '' }, Date.now() - 60000),
-    }
-    on('store.get', (_, e) => ({ value: store[(e as { key: string }).key] }))
-    on('store.set', () => ({ value: undefined }))
-    on('store.keys', () => ({ value: Object.keys(store) }))
-    on('session.id', () => ({ value: 'me' }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    const drawn = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
-
-    expect(drawn).toContain('PAY-12')
-    expect(drawn).toContain('"synth"')
-    expect(drawn).not.toContain('"waiting"')
-    expect(drawn).not.toContain('Handover')
-    await ui.unmount()
 })
 
 test('a right click anywhere on the band opens the menu, a second one closes it', async ($, on) => {
@@ -436,7 +336,7 @@ test('a bubble said on waking up is drawn over the fading tree, its frame whole'
         t: 1000, cols: 64, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
         pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
         bubble: { text: 'hi there', age: 2000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, note: null,
-        action: null, toy: null, spark: null, season: null, neighbors: [], visitorsLabel: '', menu: null,
+        action: null, toy: null, spark: null, season: null, menu: null,
         nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null,
     }
     const cells = paint(view)
@@ -451,7 +351,7 @@ test('every species does its own trick beside it while it works', () => {
             t: 2000, cols: 64, species, rarity: 'common', mood: 'tool', moodAge: 0,
             pose: { x: 34, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
             bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, note: null,
-            action, toy: null, spark: null, season: null, neighbors: [], visitorsLabel: '', menu: null, nap: null, trail: [], leave: null,
+            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null,
         }
 
         return [...paint(view)].join(',')
@@ -532,7 +432,7 @@ const footerView = (overrides: Partial<View>): View => ({
     t: 1000, cols: 49, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
     pose: { x: 38, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
     bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, note: null, action: null, toy: null,
-    spark: null, season: null, neighbors: [], visitorsLabel: '', menu: null, nap: null, trail: [], leave: null,
+    spark: null, season: null, menu: null, nap: null, trail: [], leave: null,
     ...overrides,
 })
 
@@ -542,44 +442,10 @@ const rowOf = (view: View, row: number): string => {
     return Array.from({ length: view.cols }, (_, x) => String.fromCodePoint(cells[(row * view.cols + x) * 3] ?? 0x20)).join('')
 }
 
-test('a bubble keeps clear of the waiting neighbors on the left, both texts stay whole', () => {
-    const view = footerView({
-        bubble: { text: '"Ideas for a new mod" is waiting for you', age: 5000 },
-        neighbors: [{ id: 'other', species: 'ninja', rarity: 'common', status: 'waiting', label: 'Ideas for a new mod' }],
-        visitorsLabel: 'Ideas for a new mod',
-    })
-
-    expect(rowOf(view, 1)).toContain('Ideas for a new mod')
-    expect(rowOf(view, 1)).not.toContain('┤')
-})
-
 test('a bubble keeps clear of the subagents running behind the buddy', () => {
     const view = footerView({ cols: 64, pose: { x: 4, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, agents: 2, bubble: { text: 'minions deployed', age: 5000 } })
 
     expect(rowOf(view, 1)).toContain('─┤ minions deployed')
-})
-
-test('a neighbor that already waits when the session starts gets no bubble, its name is on the left', async ($, on) => {
-    stubEngine(on)
-    const other = { name: 'Noodle', species: 'ninja', rarity: 'common', status: 'waiting', reason: null, since: Date.now() - 60000, place: { folder: 'pixel-buddy', branch: 'main', task: '' }, updatedAt: Date.now() }
-    const store: Record<string, unknown> = { buddy: NOODLE, 'session:other': other }
-    on('store.get', (_, e) => ({ value: store[(e as { key: string }).key] }))
-    on('store.set', (_, e) => {
-        const { key, value } = e as { key: string; value: unknown }
-        store[key] = value
-
-        return { value: undefined }
-    })
-    on('store.keys', () => ({ value: Object.keys(store) }))
-    on('session.id', () => ({ value: 'me' }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    const band = await ui.find({ type: 'Client', key: 'buddy-band' })
-
-    expect(JSON.stringify(band)).toContain('"visitorsLabel":"pixel-buddy"')
-    expect(JSON.stringify(band)).toContain('"bubble":null')
-    await ui.unmount()
 })
 
 test('dragging leaves a light trail of fading copies behind the buddy, gone after half a second', () => {
@@ -684,19 +550,6 @@ test('a ball thrown at the very edge of the strip is caught too, the buddy does 
     await ui.unmount()
 })
 
-test('in a narrow strip the neighbor title is cut to fit, and the buddy with its tree stays clear of it', () => {
-    const title = 'Payment retries and refunds flow'
-    const neighbors = [{ id: 'other', species: 'ninja', rarity: 'common', status: 'waiting', label: title }] as const
-    const x = petMinXOf(1, title, 44)
-    const asleep = footerView({
-        cols: 44, mood: 'sleep', neighbors: [...neighbors], visitorsLabel: title,
-        pose: { x, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, nap: { x, age: 5000, wokeAge: null },
-    })
-
-    expect(x).toBeLessThanOrEqual(44 - 11)
-    expect(rowOf(asleep, 1)).toContain('Payment retries and…')
-})
-
 const storeOn = (on: On, store: Record<string, unknown>) => {
     on('store.get', (_, e) => ({ value: store[(e as { key: string }).key] }))
     on('store.set', (_, e) => {
@@ -706,83 +559,7 @@ const storeOn = (on: On, store: Record<string, unknown>) => {
         return { value: undefined }
     })
     on('store.keys', () => ({ value: Object.keys(store) }))
-    on('session.id', () => ({ value: 'me' }))
-    on('classic.Stop', () => ({}))
 }
-
-const stopped = (background: number, answer: string) => ({
-    hook_event_name: 'Stop', session_id: 'me', transcript_path: '/dev/null', cwd: '/', stop_hook_active: false, last_assistant_message: answer,
-    background_tasks: Array.from({ length: background }, (_, i) => ({ id: `b${i}`, type: 'shell', status: 'running', description: 'gradle build' })),
-    session_crons: [],
-})
-
-test('a session that ends its turn with work left in the background is working, not waiting for you', async ($, on) => {
-    stubEngine(on)
-    const store: Record<string, unknown> = { buddy: NOODLE }
-    storeOn(on, store)
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    await $.classic.Stop(stopped(1, 'The build runs in the background, I will report when it ends.') as unknown as Parameters<typeof $.classic.Stop>[0])
-    const busy = store['session:me']
-    await $.classic.Stop(stopped(0, '**Done.**\n\nShould I bring Noodle back?') as unknown as Parameters<typeof $.classic.Stop>[0])
-
-    expect(busy).toMatchObject({ status: 'working', reason: null })
-    expect(store['session:me']).toMatchObject({ status: 'waiting', reason: null })
-})
-
-test('a session in a git worktree finds its branch through the .git file, and runs no programs', async ($, on) => {
-    stubEngine(on)
-    const store: Record<string, unknown> = { buddy: NOODLE }
-    storeOn(on, store)
-    on('session.root', () => ({ value: '/work/api-refunds/service' }))
-    const files: Record<string, string> = {
-        '/work/api-refunds/.git': 'gitdir: /work/api/.git/worktrees/api-refunds\n',
-        '/work/api/.git/worktrees/api-refunds/HEAD': 'ref: refs/heads/feature/PAY-7-refunds\n',
-    }
-    on('fs.read', (_, e) => (files[e.path] === undefined ? { deny: 'no such file' } : { value: files[e.path] }))
-    let programs = 0
-    on('process.run', () => {
-        programs += 1
-
-        return { deny: 'no programs here' }
-    })
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-
-    expect(store['session:me']).toMatchObject({ place: { folder: 'service', branch: 'feature/PAY-7-refunds', task: 'PAY-7' } })
-    expect(programs).toBe(0)
-})
-
-test('the status a session shares keeps no words of the conversation', async ($, on) => {
-    stubEngine(on)
-    const store: Record<string, unknown> = { buddy: NOODLE }
-    storeOn(on, store)
-    on('session.messages', () => ({ value: [{ role: 'user', text: 'refund the order of Jane Doe', toolUses: [] }] }))
-    on('prompt.submit', (_, e) => ({ text: (e as { text: string }).text }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    await $.prompt.submit({ text: 'refund the order of Jane Doe' } as Parameters<typeof $.prompt.submit>[0])
-    await $.classic.Stop(stopped(0, 'Refunded, Jane Doe gets a mail.') as unknown as Parameters<typeof $.classic.Stop>[0])
-    const mine = store['session:me'] as Record<string, unknown>
-
-    expect(Object.keys(mine).sort()).toEqual(['name', 'place', 'rarity', 'reason', 'since', 'species', 'status', 'updatedAt'])
-    expect(JSON.stringify(mine)).not.toContain('Jane')
-})
-
-test('the list of waiting sessions says when Claude finished there', async ($, on) => {
-    stubEngine(on)
-    const other = { name: 'Tofu', species: 'ninja', rarity: 'common', status: 'waiting', reason: null, since: Date.now() - 5 * 60000, place: { folder: 'api', branch: 'main', task: '' }, updatedAt: Date.now() }
-    storeOn(on, { buddy: NOODLE, 'session:other': other })
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    await ui.post({ type: 'visitors' }, { in: 'buddy-band' })
-    await ui.redraw()
-    const note = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
-
-    expect(note).toContain('api: your turn, Claude finished 5 min ago')
-    await ui.unmount()
-})
 
 test('test runs are told apart from builds, excluded tests and pipes that hide the exit code', () => {
     const runs = ['./gradlew test', 'cd service && ./gradlew functionalTest', 'go test ./...', 'cargo test', 'pytest -q', 'npx jest', 'vitest run', 'npm run test', 'mvn -q verify']
@@ -790,6 +567,21 @@ test('test runs are told apart from builds, excluded tests and pipes that hide t
 
     expect(runs.filter(command => !isTestRun(command))).toEqual([])
     expect(notRuns.filter(isTestRun)).toEqual([])
+})
+
+test('entries older versions kept for each session are removed from the store at start', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: NOODLE, theme: 'off', 'session:old': { status: 'waiting', title: 'Refunds for Jane Doe' } }
+    storeOn(on, store)
+    on('store.delete', (_, e) => {
+        delete store[(e as { key: string }).key]
+
+        return { value: undefined }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+    expect(Object.keys(store).sort()).toEqual(['buddy', 'theme'])
 })
 
 test('a long turn the person interrupted is not celebrated, a long answered one is', async ($, on) => {
@@ -819,38 +611,6 @@ test('a long turn the person interrupted is not celebrated, a long answered one 
     await ui.unmount()
 })
 
-test('after a permission was answered and the tool ran, the session no longer shows as asking for it', async ($, on) => {
-    stubEngine(on)
-    const store: Record<string, unknown> = { buddy: NOODLE }
-    storeOn(on, store)
-    on('classic.Notification', () => ({}))
-    on('classic.PostToolUse', () => ({}))
-    const base = { session_id: 'me', transcript_path: '/dev/null', cwd: '/' }
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    await $.classic.Notification({ ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' } as unknown as Parameters<typeof $.classic.Notification>[0])
-    await $.classic.PostToolUse({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: {}, tool_response: {} } as unknown as Parameters<typeof $.classic.PostToolUse>[0])
-    await $.classic.Stop(stopped(0, 'Done.') as unknown as Parameters<typeof $.classic.Stop>[0])
-
-    expect(store['session:me']).toMatchObject({ status: 'waiting' })
-})
-
-test('entries of sessions dead for more than a day are removed from the shared store', async ($, on) => {
-    stubEngine(on)
-    const dead = { name: 'Old', species: 'cat', rarity: 'common', status: 'waiting', reason: null, since: 0, place: { folder: 'x', branch: 'main', task: '' }, title: 'old', updatedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 }
-    const store: Record<string, unknown> = { buddy: NOODLE, 'session:dead': dead }
-    storeOn(on, store)
-    on('store.delete', (_, e) => {
-        delete store[(e as { key: string }).key]
-
-        return { value: undefined }
-    })
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-
-    expect(Object.keys(store)).not.toContain('session:dead')
-})
-
 test('a buddy stored as the removed bali bird comes back as a penguin, not as a crash', async ($, on) => {
     stubEngine(on)
     on('store.get', () => ({ value: { ...NOODLE, species: 'bird' } }))
@@ -861,6 +621,15 @@ test('a buddy stored as the removed bali bird comes back as a penguin, not as a 
 
     expect(JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))).toContain('"species":"penguin"')
     await ui.unmount()
+})
+
+test('a note being typed shows the cursor on the line it types, not on every line still to come', () => {
+    const text = 'DEBUGGING 30\nPATIENCE 91\nCHAOS 30\nWISDOM 19\nSNARK 61'
+    const note = { title: 'Pickle', text, age: 12 * 22 }
+    const view = footerView({ cols: 64, rows: rowsOf(note, 64), note, t: 600 })
+    const cursors = Array.from({ length: view.rows }, (_, row) => rowOf(view, row)).join('\n').split('▍').length - 1
+
+    expect(cursors).toBe(1)
 })
 
 test('a double click keeps the open note on the strip, and a bubble wipes trick glyphs under it', () => {

@@ -73,10 +73,6 @@ Eight species, five rarities, a name and stats of its own. One buddy per machine
   robot scans the floor with a laser
 - **Naps when you are away.** After three quiet minutes it lies down under a palm, the ninja under a sakura. When you
   come back or Claude starts working, it hops up and the tree fades away
-- **Tells you who waits.** Buddies of your other sessions on this machine visit your strip. When one of those sessions
-  waits for your answer or permission, its buddy waves with a `!` next to the task key from its branch, or its folder.
-  Click it to see when Claude finished there or what it needs permission for. A session still working in the background
-  does not count as waiting
 - **Dresses for the season.** A witch hat and bats around Halloween, a Santa hat and snow in December. The ninja slices
   pumpkins or tangerines then
 
@@ -89,7 +85,6 @@ Eight species, five rarities, a name and stats of its own. One buddy per machine
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
 | right click | the menu: `card` with stats and personality, `change buddy`, `theme`, `hide` |
-| click the `!` buddies on the left | which of your sessions wait for you and what Claude asked there |
 
 ## Commands
 
@@ -106,12 +101,9 @@ Only for what a click cannot do:
 ## What it runs and sends
 
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
-- **It runs no programs.** To show the branch and its task key it reads the `.git/HEAD` file of the session's
-  repository, or for a worktree the `.git` file and the `HEAD` it points to
-- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy, the theme, and a short status
-  of each open session so your other sessions can show who waits for you. That status holds the folder, the branch, the
-  task key from the branch name, whether the session works or waits, and Claude Code's permission notice such as
-  `Claude needs your permission to use Bash`. The entry of a closed session is removed after a day
+- **It runs no programs and reads no files**
+- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy with its name and stats, and
+  the theme. Session entries an older version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
@@ -122,8 +114,7 @@ Only for what a click cannot do:
 Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview.md): a hooks module and a
 `Client` module that animates in the terminal.
 
-- `hooks/register.tsx` listens to the session: turns, tool calls, the end of a turn with its background work,
-  permission prompts, clicks. It draws the strip in the `SessionMode` render site at the right of the footer and falls
+- `hooks/register.tsx` listens to the session: turns, tool calls, subagents, clicks. It draws the strip in the `SessionMode` render site at the right of the footer and falls
   back to the band above the prompt where the footer has no room
 - `hooks/band-client.tsx` runs the strip at 20 frames a second: walking, chasing the cursor, catching the ball,
   dragging

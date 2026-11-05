@@ -7,7 +7,7 @@ import type { Buddy } from './buddy'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
 import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, PORTRAIT_COLS, PORTRAIT_ROWS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, encode, maxXOf, noteTtlOf, paintPortrait, rowsOf } from './scene'
-import type { ActionKind, Menu, MenuItem, Mood, Neighbor, NeighborStatus, Pose, Season, View } from './scene'
+import type { ActionKind, Menu, MenuItem, Mood, Pose, Season, View } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
@@ -21,8 +21,6 @@ const THEMES = ['auto', 'winter', 'halloween', 'off'] as const
 
 type Theme = (typeof THEMES)[number]
 const SESSION_PREFIX = 'session:'
-const NEIGHBOR_FRESH_MS = 20000
-const STALE_MS = 24 * 60 * 60 * 1000
 const SYNC_EVERY_FRAMES = 60
 const COMMAND = 'buddy'
 const FRAME_MS = 50
@@ -126,107 +124,11 @@ const menuOf = (): Menu | null => {
     return { items }
 }
 
-type Place = { folder: string; branch: string; task: string }
-type Entry = {
-    name: string
-    species: SpeciesId
-    rarity: Buddy['rarity']
-    status: NeighborStatus
-    reason: string | null
-    since: number
-    place: Place
-    updatedAt: number
-}
-
-let sessionId = ''
-let place: Place = { folder: '', branch: '', task: '' }
-
-const nameOf = (entry: Entry): string => entry.place.task || entry.place.folder
-
-const shortOf = (name: string, max: number): string => {
-    const chars = [...name]
-
-    return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : name
-}
-let waitingSince: number | null = null
-let permission: { message: string; at: number } | null = null
-let backgroundWork = 0
-let neighbors: Array<Entry & { id: string }> = []
-let calling = new Set<string>()
-let isCallingSeeded = false
 let startedAt = 0
 
-const statusOf = (): NeighborStatus => {
-    if (permission !== null) {
-        return 'permission'
-    }
-    if (turnAt !== null || backgroundWork > 0) {
-        return 'working'
-    }
-
-    return waitingSince === null ? 'idle' : 'waiting'
-}
-
-const entryOf = (now: number): Entry | null => {
-    if (buddy === null) {
-        return null
-    }
-    const status = statusOf()
-
-    return {
-        name: buddy.name,
-        species: buddy.species,
-        rarity: buddy.rarity,
-        status,
-        reason: status === 'permission' ? permission?.message ?? null : null,
-        since: status === 'permission' ? permission?.at ?? now : status === 'working' ? turnAt ?? now : waitingSince ?? startedAt,
-        place,
-        updatedAt: now,
-    }
-}
-
-const GIT_DEPTH = 8
-const BRANCH_REF = /^ref: refs\/heads\/(.+)$/m
-const GITDIR = /^gitdir: (.+)$/m
-
-const headOf = async ($: EngineInterface, dir: string): Promise<string | null> => {
-    const head = await $.fs.read(`${dir}/.git/HEAD`).catch(() => null)
-    if (head !== null) {
-        return head
-    }
-    const gitdir = GITDIR.exec(await $.fs.read(`${dir}/.git`).catch(() => ''))?.[1]?.trim()
-    if (gitdir === undefined) {
-        return null
-    }
-
-    return $.fs.read(`${gitdir.startsWith('/') ? gitdir : `${dir}/${gitdir}`}/HEAD`).catch(() => null)
-}
-
-const readBranch = async ($: EngineInterface, root: string): Promise<string> => {
-    const parts = root.split('/').filter(part => part !== '')
-    for (let depth = parts.length; depth > 0 && depth > parts.length - GIT_DEPTH; depth--) {
-        const head = await headOf($, `/${parts.slice(0, depth).join('/')}`)
-        if (head !== null) {
-            return BRANCH_REF.exec(head)?.[1]?.trim() ?? ''
-        }
-    }
-
-    return ''
-}
-
-const readPlace = async ($: EngineInterface): Promise<Place> => {
-    const root = await $.session.root()
-    const folder = root.split('/').filter(part => part !== '').pop() ?? root
-    const branch = await readBranch($, root)
-    const task = /[A-Z][A-Z0-9]+-\d+/.exec(branch)?.[0] ?? ''
-
-    return { folder, branch, task }
-}
-
-const minutesAgo = (since: number, now: number): string => {
-    const minutes = Math.max(0, Math.round((now - since) / 60000))
-
-    return minutes === 0 ? 'just now' : `${minutes} min ago`
+const dropSessionEntries = async ($: EngineInterface): Promise<void> => {
+    const keys = (await $.store.keys()).filter(key => key.startsWith(SESSION_PREFIX))
+    await Promise.all(keys.map(key => $.store.delete(key)))
 }
 
 const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
@@ -242,59 +144,6 @@ const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
     }
     theme = await readTheme($)
 }
-
-const syncNeighbors = async ($: EngineInterface, now: number): Promise<void> => {
-    await syncShared($, now)
-    const mine = entryOf(now)
-    if (sessionId === '' || mine === null) {
-        return
-    }
-    await $.store.set(`${SESSION_PREFIX}${sessionId}`, mine)
-    const keys = (await $.store.keys()).filter(key => key.startsWith(SESSION_PREFIX) && key !== `${SESSION_PREFIX}${sessionId}`)
-    const read = await Promise.all(keys.map(async key => ({ id: key.slice(SESSION_PREFIX.length), ...((await $.store.get(key)) as Entry) })))
-    const stale = read.filter(entry => !(now - entry.updatedAt < STALE_MS))
-    await Promise.all(stale.map(entry => $.store.delete(`${SESSION_PREFIX}${entry.id}`)))
-    const entries = read.filter(entry => !stale.includes(entry))
-    const order: Record<NeighborStatus, number> = { permission: 0, waiting: 1, working: 2, idle: 3 }
-    neighbors = entries
-        .filter(entry => entry.species !== undefined && now - entry.updatedAt < NEIGHBOR_FRESH_MS)
-        .filter(entry => entry.status === 'waiting' || entry.status === 'permission')
-        .sort((a, b) => order[a.status] - order[b.status] || a.since - b.since)
-    const nowCalling = new Set(neighbors.filter(entry => entry.status === 'waiting' || entry.status === 'permission').map(entry => entry.id))
-    const fresh = isCallingSeeded ? neighbors.find(entry => nowCalling.has(entry.id) && !calling.has(entry.id)) : undefined
-    calling = nowCalling
-    isCallingSeeded = true
-    if (fresh !== undefined) {
-        const name = shortOf(nameOf(fresh), 28)
-        sayText(`"${name}" is waiting for you`, now)
-    }
-}
-
-const neighborsOf = (): Neighbor[] => neighbors.map(entry => ({ id: entry.id, species: entry.species, rarity: entry.rarity, status: entry.status, label: nameOf(entry) }))
-
-const VISITOR_NAMES = 3
-
-const visitorsLabelOf = (): string => {
-    const [only] = neighbors
-    if (neighbors.length === 1 && only !== undefined) {
-        return shortOf(nameOf(only), 28)
-    }
-    const names = neighbors.slice(0, VISITOR_NAMES).map(entry => shortOf(nameOf(entry), 14))
-    const more = neighbors.length - names.length
-
-    return [...names, ...(more > 0 ? [`+${more}`] : [])].join(' · ')
-}
-
-const visitorsNoteOf = (now: number): string => neighbors
-    .map(entry => {
-        const minutes = Math.max(1, Math.round((now - entry.since) / 60000))
-        const why = entry.status === 'permission'
-            ? `needs your permission: ${entry.reason ?? ''}`
-            : `your turn, Claude finished ${minutes} min ago`
-
-        return `${entry.status === 'permission' ? '!' : '·'} ${shortOf(nameOf(entry), 32)}: ${why}`
-    })
-    .join('\n')
 
 const isHolidays = (now: number): boolean => {
     const date = new Date(now)
@@ -524,8 +373,6 @@ const viewOf = (now: number): View | null => {
         toy: null,
         spark: null,
         season: seasonOf(now),
-        neighbors: neighborsOf(),
-        visitorsLabel: visitorsLabelOf(),
         menu: menuOf(),
         nap: null,
         trail: [],
@@ -555,8 +402,6 @@ const bandPropsOf = (now: number): BandProps | null => {
         note,
         action,
         season: seasonOf(now),
-        neighbors: neighborsOf(),
-        visitorsLabel: visitorsLabelOf(),
         menu: menuOf(),
     }
 }
@@ -645,7 +490,7 @@ const frame = async ($: EngineInterface): Promise<void> => {
         await refreshAgents($)
     }
     if (frames % SYNC_EVERY_FRAMES === 0) {
-        await syncNeighbors($, now)
+        await syncShared($, now)
     }
     const view = viewOf(now)
     if (view === null || !isShown(now)) {
@@ -745,7 +590,6 @@ const help = (): string => [
     '  drag              carry it',
     '  click empty spot  throw a ball',
     '  right click       menu: card, change buddy, theme (calendar, winter, halloween, off), hide',
-    '  click the ! row   which sessions wait for you',
     '',
     'Commands, for what a click cannot do:',
     '  /buddy               its card: portrait, stats, personality',
@@ -912,9 +756,7 @@ export const register: Register = on => {
         await $.command.register({ name: COMMAND, description: 'Your pixel buddy. Most things are clicks: right click it for the menu', argumentHint: 'help · name <new name> · on' })
         await loadBuddy($, now)
         startedAt = now
-        sessionId = await $.session.id().catch(() => '')
-        place = await readPlace($).catch(() => place)
-        await syncNeighbors($, now)
+        await dropSessionEntries($)
         ensureTimer($, now)
 
         return next(e)
@@ -939,9 +781,6 @@ export const register: Register = on => {
     on('prompt.submit', async ($, e, next) => {
         const now = await $.clock.now()
         ensureTimer($, now)
-        waitingSince = null
-        permission = null
-        backgroundWork = 0
         if (now - lastSeenAt > SLEEP_AFTER_MS) {
             say('back', now, true)
         }
@@ -954,7 +793,6 @@ export const register: Register = on => {
         if (e.agentId === undefined) {
             const now = await $.clock.now()
             turnAt = now
-            backgroundWork = 0
             saidThinking = false
             if (MOOD_MS[mood] === undefined) {
                 setMood('think', now)
@@ -969,8 +807,6 @@ export const register: Register = on => {
             const now = await $.clock.now()
             const isMarathon = e.reason === 'answer' && now - turnAt > MARATHON_MS
             turnAt = null
-            waitingSince = now
-            permission = null
             lastSeenAt = now
             if (isMarathon) {
                 setMood('happy', now)
@@ -995,7 +831,6 @@ export const register: Register = on => {
         const isMain = e.agentId === undefined
         const callAt = await $.clock.now()
         ensureTimer($, callAt)
-        permission = isMain ? null : permission
         if (isMain && MOOD_MS[mood] === undefined) {
             setMood('tool', callAt)
         }
@@ -1047,49 +882,6 @@ export const register: Register = on => {
         return ran
     }).catch(($, e, next) => next(e))
 
-    on('classic.Stop', async ($, e, next) => {
-        const now = await $.clock.now()
-        backgroundWork = (e.background_tasks?.length ?? 0) + (e.session_crons?.length ?? 0)
-        waitingSince = backgroundWork > 0 ? null : waitingSince ?? now
-        await syncNeighbors($, now).catch(() => undefined)
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('classic.PostToolUse', async ($, e, next) => {
-        permission = e.agent_id === undefined ? null : permission
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('classic.PostToolUseFailure', async ($, e, next) => {
-        permission = e.agent_id === undefined ? null : permission
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('classic.PermissionDenied', async ($, e, next) => {
-        permission = e.agent_id === undefined ? null : permission
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('classic.Notification', async ($, e, next) => {
-        if (e.notification_type === 'permission_prompt') {
-            permission = { message: e.message, at: await $.clock.now() }
-        }
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('session.end', async ($, e, next) => {
-        if (sessionId !== '') {
-            await $.store.delete(`${SESSION_PREFIX}${sessionId}`)
-        }
-
-        return next(e)
-    })
-
     on('ui.message', async ($, e, next) => {
         if (e.element !== CLIENT_KEY) {
             return next(e)
@@ -1112,9 +904,6 @@ export const register: Register = on => {
         }
         if (kind === 'error') {
             lastDeny = `client error: ${String((e.data as { message?: unknown } | null)?.message ?? '')}`
-        }
-        if (kind === 'visitors' && neighbors.length > 0) {
-            note = { title: 'Waiting for you', text: visitorsNoteOf(now), at: now }
         }
         if (kind === 'caught') {
             const toy = (e.data as { kind?: string } | null)?.kind

@@ -48,8 +48,6 @@ export type View = {
     toy: Toy | null
     spark: Spark | null
     season: Season
-    neighbors: readonly Neighbor[]
-    visitorsLabel: string
     menu: Menu | null
     nap: Nap | null
     trail: readonly TrailPoint[]
@@ -93,26 +91,6 @@ export const menuRowsOf = (menu: Menu | null, cols: number): number =>
     menu === null ? 0 : Math.max(0, ...menuLayoutOf(menu, cols).map(spot => spot.row)) + 1
 
 
-
-export type NeighborStatus = 'working' | 'waiting' | 'permission' | 'idle'
-export type Neighbor = { id: string; species: SpeciesId; rarity: Rarity; status: NeighborStatus; label: string }
-
-const VISITORS_SHOWN = 4
-
-const visitorsLabelFit = (count: number, label: string, cols: number): string => {
-    const room = cols - SPRITE_W - 1 - TREE_BACK - 4 - Math.min(count, VISITORS_SHOWN) * 3
-    const chars = [...label]
-    if (room < 4) {
-        return ''
-    }
-
-    return chars.length <= room ? label : `${chars.slice(0, room - 1).join('').trimEnd()}…`
-}
-
-export const visitorsWidthOf = (count: number, label: string, cols: number): number =>
-    count === 0 ? 0 : 1 + Math.min(count, VISITORS_SHOWN) * 3 + 1 + [...visitorsLabelFit(count, label, cols)].length + 2
-
-export const petMinXOf = (count: number, label: string, cols: number): number => (count === 0 ? 0 : visitorsWidthOf(count, label, cols) + TREE_BACK)
 
 export type Season = 'winter' | 'halloween' | null
 export type Toy = { kind: 'ball' | 'shuriken'; x: number; y: number; age: number }
@@ -389,7 +367,7 @@ const PETAL = 0xffc4d2
 
 const treeOf = (v: View): Tree => (v.species === 'ninja' ? SAKURA : PALM)
 
-const isTreeLeftOf = (v: View, napX: number): boolean => napX - TREE_BACK >= visitorsWidthOf(v.neighbors.length, v.visitorsLabel, v.cols)
+const isTreeLeftOf = (napX: number): boolean => napX - TREE_BACK >= 0
 
 const treeAlphaOf = (nap: Nap): number =>
     nap.wokeAge === null ? Math.min(1, nap.age / NAP_FADE_MS) : Math.max(0, 1 - nap.wokeAge / NAP_FADE_MS)
@@ -397,7 +375,7 @@ const treeAlphaOf = (nap: Nap): number =>
 export const isLying = (v: View): boolean => v.mood === 'sleep' && v.nap !== null && v.nap.wokeAge === null && v.jump === null && !v.pose.isWalking
 
 const treeXOf = (v: View, nap: Nap, i: number): number =>
-    isTreeLeftOf(v, nap.x) ? nap.x - TREE_BACK + i : nap.x + SPRITE_W - 1 + TREE_BACK - i
+    isTreeLeftOf(nap.x) ? nap.x - TREE_BACK + i : nap.x + SPRITE_W - 1 + TREE_BACK - i
 
 const drawTree = (c: Canvas, v: View): void => {
     if (v.nap === null) {
@@ -426,7 +404,7 @@ const drawPetals = (c: Canvas, v: View): void => {
 
 const drawNap = (c: Canvas, v: View, x0: number): void => {
     const species = speciesOf(v.species)
-    const isLeft = isTreeLeftOf(v, v.nap?.x ?? x0)
+    const isLeft = isTreeLeftOf(v.nap?.x ?? x0)
     const body = species.colors.b ?? WHITE
     const lid = species.colors.z ?? species.colors.s ?? body
     const isInhale = Math.floor(v.t / BREATH_MS) % 2 === 0
@@ -880,10 +858,11 @@ const drawNote = (c: Canvas, v: View, x0: number, accent: number): void => {
     lines.forEach((line, i) => {
         writeAbsolute(c, left, top + 1 + i, '│', edge)
         writeAbsolute(c, left + width - 1, top + 1 + i, '│', edge)
+        const isTyping = budget >= 0 && budget < [...line].length
         const shown = [...line].slice(0, Math.max(0, budget)).join('')
         budget -= [...line].length
         writeAbsolute(c, left + 2, top + 1 + i, shown, scale(BUBBLE_TEXT, alpha))
-        if (budget < 0 && shown.length < line.length && Math.floor(v.t / 300) % 2 === 0) {
+        if (isTyping && Math.floor(v.t / 300) % 2 === 0) {
             writeAbsolute(c, left + 2 + shown.length, top + 1 + i, '▍', scale(accent, alpha))
         }
     })
@@ -983,30 +962,6 @@ const drawSnow = (c: Canvas, v: View): void => {
     }
 }
 
-const VISITOR_LABEL = 0xb9b5c9
-
-const drawVisitors = (c: Canvas, v: View): void => {
-    const shown = v.neighbors.slice(0, VISITORS_SHOWN)
-    shown.forEach((neighbor, i) => {
-        const species = speciesOf(neighbor.species)
-        const body = scale(species.colors.b ?? WHITE, 0.85)
-        const x = 1 + i * 3
-        const hop = Math.floor((v.t + i * 170) / 220) % 2
-        const top = 3 - hop
-        dot(c, x, top, body)
-        dot(c, x + 1, top, body)
-        dot(c, x, top + 1, body)
-        dot(c, x + 1, top + 1, species.colors.e ?? 0)
-        dot(c, x + hop, top + 2, scale(body, 0.7))
-        if (Math.floor((v.t + i * 150) / 300) % 2 === 0) {
-            write(c, x, 0, '!', neighbor.status === 'permission' ? RED : 0xffe23b)
-        }
-    })
-    if (shown.length > 0) {
-        write(c, 1 + shown.length * 3 + 1, 1, visitorsLabelFit(v.neighbors.length, v.visitorsLabel, c.width), VISITOR_LABEL)
-    }
-}
-
 const MENU_EDGE = 0x6c6880
 const MENU_TEXT = 0xd6d3e0
 const MENU_ON = 0xffd23b
@@ -1034,7 +989,7 @@ const bubbleSideOf = (c: Canvas, v: View, x0: number): BubbleSide => {
     const minis = Math.min(3, v.agents)
     const left = x0 - (!v.pose.isFacingLeft && minis > 0 ? minis * 3 : 0)
     const right = x0 + SPRITE_W + (v.pose.isFacingLeft && minis > 0 ? minis * 3 + 1 : 0)
-    const roomLeft = left - 2 - visitorsWidthOf(v.neighbors.length, v.visitorsLabel, c.width)
+    const roomLeft = left - 2
     const roomRight = c.width - right - 2
 
     return roomLeft >= roomRight ? { isLeft: true, room: roomLeft, edge: left } : { isLeft: false, room: roomRight, edge: right }
@@ -1159,7 +1114,7 @@ export const LEAVE_MS = 1400
 
 const ARRIVE_MS: Record<SpeciesId, number> = {
     duck: HATCH_MS,
-    penguin: HATCH_MS,
+    penguin: 1300,
     ninja: 900,
     octopus: 900,
     axolotl: 1100,
@@ -1231,7 +1186,7 @@ const puffOut = (color: number): Show => (c, v, x0, age) => {
 
 const ARRIVALS: Record<SpeciesId, Show> = {
     duck: (c, v, x0, age) => drawEgg(c, x0, age, rarityOf(v.rarity).color),
-    penguin: (c, v, x0, age) => drawEgg(c, x0, age, rarityOf(v.rarity).color),
+    penguin: (c, v, x0, age) => slide(c, v, { age, fromX: edgeOf(c, x0), toX: x0 }),
     ninja: puffIn(SMOKE),
     octopus: puffIn(INK),
     axolotl: (c, v, x0, age) => {
@@ -1269,9 +1224,15 @@ const walkOut: Show = (c, v, x0, age) => {
     drawBody(c, v, Math.round(x0 + (edge - x0) * p * p), { isWalking: true, isFacingLeft: edge < x0 })
 }
 
+const flyOut: Show = (c, v, x0, age) => {
+    const edge = edgeOf(c, x0)
+    const p = Math.min(1, age / 1200)
+    drawBody(c, v, Math.round(x0 + (edge - x0) * p * p), { isWalking: true, isFacingLeft: edge < x0, lift: -Math.round(p * p * 6) })
+}
+
 const LEAVES: Record<SpeciesId, Show> = {
-    duck: walkOut,
-    penguin: walkOut,
+    duck: flyOut,
+    penguin: (c, v, x0, age) => slide(c, v, { age, fromX: x0, toX: edgeOf(c, x0) }),
     cat: walkOut,
     ninja: puffOut(SMOKE),
     octopus: puffOut(INK),
@@ -1410,7 +1371,6 @@ export const paint = (v: View): Uint32Array => {
     }
     drawMenu(c, v)
     drawNote(c, v, x0, rarityOf(v.rarity).color)
-    drawVisitors(c, v)
     if (v.leave !== null && isLeaving && !isJumping) {
         LEAVES[v.leave.species](c, { ...v, species: v.leave.species }, x0, v.leave.age)
     }

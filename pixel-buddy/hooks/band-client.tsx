@@ -1,8 +1,8 @@
 import type { ClientElements, ClientModule, ClientPointerEvent, JsonValue } from 'claude-code'
 
 import type { Rarity } from './buddy'
-import { DEFAULT, NAP_FADE_MS, ROWS, TRAIL_MS, maxXOf, menuLayoutOf, menuRowsOf, paint, petMinXOf, visitorsWidthOf } from './scene'
-import type { ActionKind, Menu, Mood, Neighbor, Pose, Season, View } from './scene'
+import { DEFAULT, NAP_FADE_MS, ROWS, TRAIL_MS, maxXOf, menuLayoutOf, menuRowsOf, paint } from './scene'
+import type { ActionKind, Menu, Mood, Pose, Season, View } from './scene'
 import { SPRITE_W } from './species'
 import type { SpeciesId } from './species'
 
@@ -24,8 +24,6 @@ export type BandProps = {
     note: { title: string; text: string; at: number } | null
     action: { kind: ActionKind; at: number } | null
     season: Season
-    neighbors: Neighbor[]
-    visitorsLabel: string
     menu: Menu | null
 }
 
@@ -75,13 +73,7 @@ const report = (post: (data: JsonValue) => void, where: string, error: unknown):
 
 const homeOf = (p: BandProps): number => maxXOf(p.cols)
 
-const minXOf = (p: BandProps): number => {
-    const min = petMinXOf(p.neighbors.length, p.visitorsLabel, p.cols)
-
-    return min < homeOf(p) ? min : 0
-}
-
-const clampX = (x: number, p: BandProps): number => Math.max(minXOf(p), Math.min(homeOf(p), x))
+const clampX = (x: number, p: BandProps): number => Math.max(0, Math.min(homeOf(p), x))
 
 const initialOf = (p: BandProps, now: number): BandState => ({
     x: homeOf(p),
@@ -185,7 +177,7 @@ const targetOf = (s: BandState, p: BandProps, now: number, x: number): { target:
         return { target: x, nextWanderAt: s.nextWanderAt }
     }
     if (now > s.nextWanderAt && Math.abs(s.target - x) < 0.5 && !isTyping) {
-        return { target: Math.round(minXOf(p) + Math.random() * (homeOf(p) - minXOf(p))), nextWanderAt: now + 7000 + Math.random() * 9000 }
+        return { target: Math.round(Math.random() * homeOf(p)), nextWanderAt: now + 7000 + Math.random() * 9000 }
     }
 
     return { target: clampX(s.target, p), nextWanderAt: s.nextWanderAt }
@@ -272,12 +264,6 @@ const onPointer = (s: BandState, p: BandProps, e: ClientPointerEvent, post: (dat
     if (e.type === 'move' && s.drag === null) {
         return { ...s, pointer }
     }
-    const isOnVisitors = e.type === 'down' && e.y >= p.rows - ROWS && e.x < visitorsWidthOf(p.neighbors.length, p.visitorsLabel, p.cols)
-    if (isOnVisitors && !isOnSprite(s, p, pointer)) {
-        post({ type: 'visitors' })
-
-        return { ...s, pointer }
-    }
     if (e.type === 'down' && s.jump === null && isOnSprite(s, p, pointer)) {
         return { ...s, pointer, drag: { offset: e.x - s.x, startX: s.x, isMoved: false } }
     }
@@ -285,7 +271,7 @@ const onPointer = (s: BandState, p: BandProps, e: ClientPointerEvent, post: (dat
         const kind = p.species === 'ninja' ? 'shuriken' : 'ball'
         const y = (e.y - (p.rows - ROWS)) * 2
 
-        const x = Math.max(minXOf(p) + 1, Math.min(homeOf(p) + SPRITE_W - 3, e.x))
+        const x = Math.max(1, Math.min(homeOf(p) + SPRITE_W - 3, e.x))
 
         return { ...s, pointer, toy: { kind, at: now, x, y }, isFacingLeft: x < s.x + SPRITE_W / 2 }
     }
@@ -347,8 +333,6 @@ const viewOf = (s: BandState, p: BandProps, now: number): View => ({
     toy: s.toy === null ? null : { kind: s.toy.kind, ...(toyAt(s, now) ?? { x: s.toy.x, y: 0 }), age: now - s.toy.at },
     spark: s.spark === null ? null : { x: s.spark.x, y: s.spark.y, age: now - s.spark.at },
     season: p.season,
-    neighbors: p.neighbors,
-    visitorsLabel: p.visitorsLabel,
     menu: p.menu,
     nap: s.nap === null ? null : { x: s.nap.x, age: now - s.nap.at, wokeAge: s.nap.wokeAt === null ? null : now - s.nap.wokeAt },
     trail: s.trail.map(point => ({ x: Math.round(point.x), age: now - point.at })),
