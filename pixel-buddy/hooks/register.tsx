@@ -136,84 +136,13 @@ type Entry = {
     reason: string | null
     since: number
     place: Place
-    topic: string
-    title: string
     updatedAt: number
 }
 
 let sessionId = ''
 let place: Place = { folder: '', branch: '', task: '' }
-let topic = ''
-let title = ''
-let transcript = ''
-const TOPIC_MAX = 22
-const TITLE_MAX = 40
-const TITLE_MARKS = ['"customTitle":"[^"]*"', '"aiTitle":"[^"]*"']
 
-const SERVICE_TEXT = /^(<|\/|\[request interrupted|caveat:|this session is being continued)/i
-
-const topicOf = (text: string): string => {
-    const line = text.replace(/\s+/g, ' ').trim()
-    if (SERVICE_TEXT.test(line) || line.split(' ').length < 2) {
-        return ''
-    }
-
-    return line.length > TOPIC_MAX ? `${line.slice(0, TOPIC_MAX - 1)}…` : line
-}
-
-const readTopic = async ($: EngineInterface): Promise<string> => {
-    const messages = await $.session.messages()
-    const first = messages.find(message => message.role === 'user' && topicOf(message.text) !== '')
-
-    return first === undefined ? '' : topicOf(first.text)
-}
-
-const titleOf = (raw: string | undefined): string => {
-    const line = (raw ?? '').replace(/\s+/g, ' ').trim()
-
-    return line.length > TITLE_MAX ? `${line.slice(0, TITLE_MAX - 1)}…` : line
-}
-
-const findTranscript = async ($: EngineInterface, id: string): Promise<string> => {
-    const config = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('HOME')) ?? ''}/.claude`
-    const run = await $.process.run(['find', `${config}/projects`, '-maxdepth', '2', '-name', `${id}.jsonl`], { timeoutMs: 3000 })
-
-    return run.exitCode === 0 ? run.stdout.split('\n')[0]?.trim() ?? '' : ''
-}
-
-const valueOf = (line: string): string => {
-    try {
-        const value = Object.values(JSON.parse(`{${line}}`) as Record<string, unknown>)[0]
-
-        return typeof value === 'string' ? value : ''
-    } catch {
-        return ''
-    }
-}
-
-const lastMatchOf = async ($: EngineInterface, mark: string): Promise<string> => {
-    const run = await $.process.run(['grep', '-o', '-E', mark, transcript], { timeoutMs: 3000 })
-
-    return run.stdout.trimEnd().split('\n').pop() ?? ''
-}
-
-const readTitle = async ($: EngineInterface): Promise<void> => {
-    if (transcript === '') {
-        return
-    }
-    const matches = [await lastMatchOf($, TITLE_MARKS[0] ?? ''), await lastMatchOf($, TITLE_MARKS[1] ?? '')]
-    const found = matches.map(valueOf).find(value => value.trim() !== '')
-    title = found === undefined ? title : titleOf(found)
-}
-
-const refreshTitle = async ($: EngineInterface): Promise<void> => {
-    if (transcript === '' && sessionId !== '') {
-        transcript = await findTranscript($, sessionId)
-    }
-    await readTitle($)
-}
-
-const nameOf = (entry: Entry): string => entry.title || entry.place.task || entry.topic || entry.place.folder
+const nameOf = (entry: Entry): string => entry.place.task || entry.place.folder
 
 const shortOf = (name: string, max: number): string => {
     const chars = [...name]
@@ -223,20 +152,10 @@ const shortOf = (name: string, max: number): string => {
 let waitingSince: number | null = null
 let permission: { message: string; at: number } | null = null
 let backgroundWork = 0
-let lastAnswer = ''
 let neighbors: Array<Entry & { id: string }> = []
 let calling = new Set<string>()
 let isCallingSeeded = false
 let startedAt = 0
-
-const ANSWER_MAX = 60
-
-const answerLineOf = (text: string | undefined): string => {
-    const lines = (text ?? '').replace(/```[\s\S]*?```/g, '').split('\n').map(line => line.replace(/[*#`>_]/g, '').replace(/\s+/g, ' ').trim()).filter(line => line !== '')
-    const last = [...(lines[lines.length - 1] ?? '')]
-
-    return last.length > ANSWER_MAX ? `${last.slice(0, ANSWER_MAX - 1).join('').trimEnd()}…` : last.join('')
-}
 
 const statusOf = (): NeighborStatus => {
     if (permission !== null) {
@@ -260,11 +179,9 @@ const entryOf = (now: number): Entry | null => {
         species: buddy.species,
         rarity: buddy.rarity,
         status,
-        reason: status === 'permission' ? permission?.message ?? null : status === 'waiting' && lastAnswer !== '' ? lastAnswer : null,
+        reason: status === 'permission' ? permission?.message ?? null : null,
         since: status === 'permission' ? permission?.at ?? now : status === 'working' ? turnAt ?? now : waitingSince ?? startedAt,
         place,
-        topic,
-        title,
         updatedAt: now,
     }
 }
@@ -346,7 +263,7 @@ const visitorsNoteOf = (now: number): string => neighbors
         const minutes = Math.max(1, Math.round((now - entry.since) / 60000))
         const why = entry.status === 'permission'
             ? `needs your permission: ${entry.reason ?? ''}`
-            : entry.reason === null ? `your turn, Claude finished ${minutes} min ago` : `finished ${minutes} min ago: ${entry.reason}`
+            : `your turn, Claude finished ${minutes} min ago`
 
         return `${entry.status === 'permission' ? '!' : '·'} ${shortOf(nameOf(entry), 32)}: ${why}`
     })
@@ -1000,9 +917,6 @@ export const register: Register = on => {
         startedAt = now
         sessionId = await $.session.id().catch(() => '')
         place = await readPlace($).catch(() => place)
-        topic = await readTopic($).catch(() => '')
-        transcript = await findTranscript($, sessionId).catch(() => '')
-        await readTitle($).catch(() => undefined)
         await syncNeighbors($, now)
         ensureTimer($, now)
 
@@ -1031,9 +945,6 @@ export const register: Register = on => {
         waitingSince = null
         permission = null
         backgroundWork = 0
-        if (topic === '') {
-            topic = topicOf(e.text)
-        }
         if (now - lastSeenAt > SLEEP_AFTER_MS) {
             say('back', now, true)
         }
@@ -1139,18 +1050,10 @@ export const register: Register = on => {
         return ran
     }).catch(($, e, next) => next(e))
 
-    on('classic.UserPromptSubmit', async ($, e, next) => {
-        title = titleOf(e.session_title) || title
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
     on('classic.Stop', async ($, e, next) => {
         const now = await $.clock.now()
         backgroundWork = (e.background_tasks?.length ?? 0) + (e.session_crons?.length ?? 0)
-        lastAnswer = answerLineOf(e.last_assistant_message)
         waitingSince = backgroundWork > 0 ? null : waitingSince ?? now
-        await refreshTitle($).catch(() => undefined)
         await syncNeighbors($, now).catch(() => undefined)
 
         return next(e)

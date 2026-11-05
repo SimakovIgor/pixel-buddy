@@ -69,8 +69,9 @@ Eight species, five rarities, a name and stats of its own. One buddy per machine
 - **Explains a word.** Select a word in the conversation and click the buddy: a small model types a short explanation
   in a bubble while your session keeps working
 - **Tells you who waits.** Buddies of your other sessions on this machine visit your strip. When one of those sessions
-  waits for your answer or permission, its buddy waves with a `!` next to the thread's title. Click it to see when
-  Claude finished there and what it asked. A session still working in the background does not count as waiting
+  waits for your answer or permission, its buddy waves with a `!` next to the task key from its branch, or its folder.
+  Click it to see when Claude finished there or what it needs permission for. A session still working in the background
+  does not count as waiting
 - **Dresses for the season.** A witch hat and bats around Halloween, a Santa hat and snow in December. The ninja slices
   pumpkins or tangerines then
 
@@ -102,17 +103,13 @@ Only for what a click cannot do:
 - **No tokens and no network calls of its own by default.** The one model call is the word explanation: when you click
   the buddy while a word is selected, it reads that selection with `$.ui.selection()` and sends the word, up to 80
   characters, to `haiku` through Claude Code's own model access. Nothing else leaves your machine
-- **Programs it runs**, each with fixed arguments and a 3 second limit:
-  - `git rev-parse --abbrev-ref HEAD` in the session's folder, to show the branch and its task key
-  - `find <config>/projects -maxdepth 2 -name <session id>.jsonl`, to locate this session's transcript, where
-    `<config>` is `CLAUDE_CONFIG_DIR` or `~/.claude`
-  - `grep -o -E` with the pattern of a thread title row (`"aiTitle":"…"` or `"customTitle":"…"`) on that transcript,
-    to name the session by its thread title. It reads those rows only
-- **What it reads:** the first words of your first prompt in the session, to name a session that has no title yet
+- **The one program it runs** is `git rev-parse --abbrev-ref HEAD` in the session's folder, with a 3 second limit, to
+  show the branch and its task key
 - **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy, the theme, and a short status
-  of each open session so your other sessions can show who waits for you. That status holds the folder, the branch,
-  the task key from the branch name, the thread title, the first words of your first prompt and the last line of
-  Claude's answer. The entry of a closed session is removed after a day
+  of each open session so your other sessions can show who waits for you. That status holds the folder, the branch, the
+  task key from the branch name, whether the session works or waits, and Claude Code's permission notice such as
+  `Claude needs your permission to use Bash`. The entry of a closed session is removed after a day
+- **No words of your conversation are kept.** Prompts, answers and thread titles stay out of its store
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
   permissions or settings. The `/buddy` command is the one it adds
 
