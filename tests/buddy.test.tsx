@@ -75,7 +75,8 @@ test('/buddy prints the card of the stored buddy in the chat and opens no side p
     const result = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
 
     expect(result.text).toContain('Mochi · cat · ★★★☆☆ rare')
-    expect(result.text).toContain('DEBUGGING █████████░ 90')
+    expect(result.text).toContain('stars are rarity, rolled at hatching: common 60% · uncommon 25% · rare 10% · epic 4% · legendary 1%')
+    expect(result.text).toContain('DEBUGGING █████████░  90  ← highest, sets the personality')
     expect(panes).toBe(0)
 })
 

@@ -45,8 +45,10 @@ const LINES: Record<Moment, { calm: Lines; snark: Lines }> = {
 
 const SNARKY: readonly StatName[] = ['SNARK', 'CHAOS']
 
+export const isSnarky = (stat: StatName): boolean => SNARKY.includes(stat)
+
 export const lineFor = (moment: Moment, peak: StatName, roll: number): string => {
-    const pool = LINES[moment][SNARKY.includes(peak) ? 'snark' : 'calm']
+    const pool = LINES[moment][isSnarky(peak) ? 'snark' : 'calm']
 
     return pool[Math.floor(roll * pool.length) % pool.length] ?? ''
 }

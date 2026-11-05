@@ -1,3 +1,4 @@
+import { isSnarky } from './lines'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
@@ -83,18 +84,26 @@ const bar = (value: number): string => {
 const dateOf = (at: number): string =>
     new Date(at).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
 
+const ODDS = RARITIES.map(one => `${one.label} ${one.weight}%`).join(' · ')
+
 export const cardOf = (buddy: Buddy): string => {
     const rarity = rarityOf(buddy.rarity)
     const species = speciesOf(buddy.species)
     const stars = '★'.repeat(rarity.stars) + '☆'.repeat(5 - rarity.stars)
+    const peak = peakOf(buddy)
 
     return [
         `${buddy.name} · ${species.name} · ${stars} ${rarity.label}`,
         `hatched ${dateOf(buddy.hatchedAt)}`,
         '',
-        ...STAT_NAMES.map(stat => `${stat.padEnd(10)}${bar(buddy.stats[stat])} ${buddy.stats[stat]}`),
+        `stars are rarity, rolled at hatching: ${ODDS}`,
+        'rarer buddies roll higher stats',
         '',
-        `personality: ${MOODS[peakOf(buddy)]}`,
+        'stats, rolled at hatching too:',
+        ...STAT_NAMES.map(stat => `${stat.padEnd(10)}${bar(buddy.stats[stat])} ${String(buddy.stats[stat]).padStart(3)}${stat === peak ? '  ← highest, sets the personality' : ''}`),
+        '',
+        `personality: ${MOODS[peak]}`,
+        isSnarky(peak) ? 'with CHAOS or SNARK on top it teases you' : 'it cheers you on; a buddy with CHAOS or SNARK on top teases instead',
     ].join('\n')
 }
 

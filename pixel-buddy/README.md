@@ -54,7 +54,14 @@ plugin store under `~/.claude/plugins/store`: delete its `pixel-buddy` file ther
 
 ![Cat, duck, ghost, octopus, axolotl, robot, ninja and penguin](docs/species.png)
 
-Eight species, five rarities, a name and stats of its own. One buddy per machine, shared by all your sessions.
+Eight species. A buddy hatches with a name, a rarity and five stats, all rolled once:
+
+- **Rarity** is the stars on its card: common 60%, uncommon 25%, rare 10%, epic 4%, legendary 1%. Rarer buddies roll
+  higher stats
+- **Stats** are DEBUGGING, PATIENCE, CHAOS, WISDOM and SNARK. The highest one sets its personality. With CHAOS or SNARK
+  on top it teases you, otherwise it cheers you on
+
+One buddy per machine, shared by all your sessions. `change buddy` in the menu hatches a new one.
 
 ## What it does
 
@@ -62,9 +69,9 @@ Eight species, five rarities, a name and stats of its own. One buddy per machine
 
 - **Stays out of the way.** It sits at the right end of the footer, so Claude's spinner stays right above the prompt and
   the footer keeps its height
-- **Comes and goes in its own way.** The duck and the penguin hatch from an egg and waddle away, the ninja appears and
-  vanishes in a puff of smoke, the robot lands on a rocket flame and flies off, the cat runs in and out, the ghost
-  fades in and out, the octopus uses ink and the axolotl bubbles
+- **Comes and goes in its own way.** The duck hatches from an egg and flies off, the penguin slides in and out on its
+  belly, the ninja appears and vanishes in a puff of smoke, the robot lands on a rocket flame and flies away, the cat
+  runs in and out, the ghost fades in and out, the octopus uses ink and the axolotl bubbles
 - **Reacts to the session.** Thinking dots while Claude works, a jolt on a failed command, dizzy when the same thing
   fails three times in a row, happy on a commit, green tests or a finished plan. A little one runs next to it for
   every subagent
@@ -80,11 +87,11 @@ Eight species, five rarities, a name and stats of its own. One buddy per machine
 
 | Do | What happens |
 | --- | --- |
-| click it | pet it, or close the note it shows |
+| click it | pet it |
 | double click | its own move: the ninja teleports in smoke, the robot flies over, the duck dives, the penguin slides on its belly, the cat dashes, the ghost fades over, the octopus goes through ink, the axolotl through bubbles |
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
-| right click | the menu: `change buddy`, `theme`, `hide` |
+| right click | the menu: `change buddy` hatches a new one of the species you pick, `theme`, `hide` |
 
 ## Commands
 
@@ -102,8 +109,8 @@ Only for what a click cannot do:
 
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
-- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy with its name and stats, and
-  the theme. Session entries an older version kept are removed when a session starts
+- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy with its name and stats, the
+  theme and the hat switch. Session entries an older version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
@@ -114,10 +121,11 @@ Only for what a click cannot do:
 Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview.md): a hooks module and a
 `Client` module that animates in the terminal.
 
-- `hooks/register.tsx` listens to the session: turns, tool calls, subagents, clicks. It draws the strip in the `SessionMode` render site at the right of the footer and falls
+- `hooks/register.tsx` listens to the session: turns, tool calls, subagents, clicks. Five times a second it decides
+  the mood and what to say. It draws the strip in the `SessionMode` render site at the right of the footer and falls
   back to the band above the prompt where the footer has no room
-- `hooks/band-client.tsx` runs the strip at 20 frames a second: walking, chasing the cursor, catching the ball,
-  dragging
+- `hooks/band-client.tsx` animates the strip at 20 frames a second: walking, chasing the cursor, catching the ball,
+  dragging. A frame that looks like the last one is not redrawn, so an idle buddy costs little
 - `hooks/scene.ts` paints everything with half-block pixels, two pixels per terminal cell
 - `hooks/species.ts` holds the sprites, `hooks/buddy.ts` the stats and the card, `hooks/lines.ts` what it says
 
