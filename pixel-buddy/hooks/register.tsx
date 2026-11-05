@@ -97,7 +97,6 @@ let jumpAt: number | null = null
 let jumpFrom = 0
 let jumpTo = 0
 let messages = 0
-let explainedKey = ''
 let theme: Theme = 'auto'
 let menuPage: 'main' | 'species' | null = null
 
@@ -186,11 +185,39 @@ const entryOf = (now: number): Entry | null => {
     }
 }
 
+const GIT_DEPTH = 8
+const BRANCH_REF = /^ref: refs\/heads\/(.+)$/m
+const GITDIR = /^gitdir: (.+)$/m
+
+const headOf = async ($: EngineInterface, dir: string): Promise<string | null> => {
+    const head = await $.fs.read(`${dir}/.git/HEAD`).catch(() => null)
+    if (head !== null) {
+        return head
+    }
+    const gitdir = GITDIR.exec(await $.fs.read(`${dir}/.git`).catch(() => ''))?.[1]?.trim()
+    if (gitdir === undefined) {
+        return null
+    }
+
+    return $.fs.read(`${gitdir.startsWith('/') ? gitdir : `${dir}/${gitdir}`}/HEAD`).catch(() => null)
+}
+
+const readBranch = async ($: EngineInterface, root: string): Promise<string> => {
+    const parts = root.split('/').filter(part => part !== '')
+    for (let depth = parts.length; depth > 0 && depth > parts.length - GIT_DEPTH; depth--) {
+        const head = await headOf($, `/${parts.slice(0, depth).join('/')}`)
+        if (head !== null) {
+            return BRANCH_REF.exec(head)?.[1]?.trim() ?? ''
+        }
+    }
+
+    return ''
+}
+
 const readPlace = async ($: EngineInterface): Promise<Place> => {
     const root = await $.session.root()
     const folder = root.split('/').filter(part => part !== '').pop() ?? root
-    const run = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 3000 }).catch(() => null)
-    const branch = run !== null && run.exitCode === 0 ? run.stdout.trim() : ''
+    const branch = await readBranch($, root)
     const task = /[A-Z][A-Z0-9]+-\d+/.exec(branch)?.[0] ?? ''
 
     return { folder, branch, task }
@@ -303,7 +330,7 @@ const readTheme = async ($: EngineInterface): Promise<Theme> => {
     return (await $.store.get(HAT_KEY)) === 'on' ? 'winter' : 'auto'
 }
 let lastMessage = ''
-let note: { title: string; text: string | null; at: number } | null = null
+let note: { title: string; text: string; at: number } | null = null
 let action: { kind: ActionKind; at: number } | null = null
 let nextTrickAt = 0
 let isClientMode = false
@@ -534,36 +561,6 @@ const bandPropsOf = (now: number): BandProps | null => {
     }
 }
 
-const EXPLAIN_MAX = 80
-let isExplaining = false
-
-const explain = async ($: EngineInterface, term: string, now: number): Promise<void> => {
-    if (isExplaining || buddy === null) {
-        return
-    }
-    isExplaining = true
-    setMood('think', now)
-    bubble = null
-    note = { title: term, text: null, at: now }
-    const result = await $.model.complete({
-        model: 'haiku',
-        maxTokens: 300,
-        system: 'You are a tiny companion living in a developer terminal. Explain terms briefly and to the point, no preamble.',
-        prompt: `Explain in plain words what "${term}" is, in 2-3 sentences, under 350 characters.`,
-    }).catch(() => null)
-    isExplaining = false
-    const done = await $.clock.now()
-    if (result === null || !result.isAnswered) {
-        note = null
-        setMood('shock', done)
-        sayText('couldn\'t look it up', done)
-
-        return
-    }
-    note = { title: term, text: result.text.trim(), at: done }
-    setMood('happy', done)
-}
-
 const startJump = (now: number): boolean => {
     if (!isClientMode) {
         return false
@@ -743,7 +740,7 @@ export const isTestRun = (command: string): boolean => !command.includes('|') &&
 
 const help = (): string => [
     'Your buddy lives on clicks:',
-    '  click             pet it, or explain the word you selected',
+    '  click             pet it',
     '  double click      jump',
     '  drag              carry it',
     '  click empty spot  throw a ball',
@@ -1102,18 +1099,10 @@ export const register: Register = on => {
         messages += 1
         lastMessage = `${kind ?? 'unknown'} ${new Date(now).toLocaleTimeString()}`
         lastSeenAt = now
-        if (kind === 'pet' && note !== null && note.text !== null) {
+        if (kind === 'pet' && note !== null) {
             note = null
         } else if (kind === 'pet') {
-            const selection = await $.ui.selection()
-            const selected = selection?.text.trim() ?? ''
-            const key = `${selection?.requestId ?? ''}:${selected}`
-            if (selected !== '' && selected.length <= EXPLAIN_MAX && key !== explainedKey && !isExplaining) {
-                explainedKey = key
-                void explain($, selected, now)
-            } else {
-                pet(now)
-            }
+            pet(now)
         }
         if (kind === 'jump') {
             startJump(now)

@@ -119,7 +119,7 @@ export type Toy = { kind: 'ball' | 'shuriken'; x: number; y: number; age: number
 export type Spark = { x: number; y: number; age: number }
 
 export type Jump = { age: number; fromX: number; toX: number }
-export type Note = { title: string; text: string | null; age: number }
+export type Note = { title: string; text: string; age: number }
 export type ActionKind = 'swing' | 'slice' | 'fruit' | 'trick'
 export type Action = { kind: ActionKind; age: number }
 
@@ -846,13 +846,12 @@ const wrapText = (text: string, width: number): string[] => {
 
 const noteWidthOf = (cols: number): number => Math.max(20, cols - 2)
 
-export const noteLinesOf = (note: { text: string | null }, cols: number): string[] =>
-    note.text === null ? [''] : wrapText(note.text, noteWidthOf(cols) - 4)
+export const noteLinesOf = (note: { text: string }, cols: number): string[] => wrapText(note.text, noteWidthOf(cols) - 4)
 
-export const rowsOf = (note: { text: string | null } | null, cols: number, menu: Menu | null = null): number =>
+export const rowsOf = (note: { text: string } | null, cols: number, menu: Menu | null = null): number =>
     menuRowsOf(menu, cols) + (note === null ? ROWS : ROWS + noteLinesOf(note, cols).length + 2)
 
-export const noteTtlOf = (text: string | null): number => (text === null ? 60000 : 9000 + text.length * 60)
+export const noteTtlOf = (text: string): number => 9000 + text.length * 60
 
 const writeAbsolute = (c: Canvas, x: number, row: number, text: string, color: number | ((i: number) => number)): void =>
     write(c, x, row - c.base, text, color)
@@ -877,14 +876,10 @@ const drawNote = (c: Canvas, v: View, x0: number, accent: number): void => {
     const edge = scale(BUBBLE_EDGE, alpha)
     const title = ` ${[...v.note.title].slice(0, width - 8).join('')} `
     writeAbsolute(c, left, top + 0, `╭─${title}${'─'.repeat(Math.max(0, width - 3 - [...title].length))}╮`, i => (i >= 2 && i < 2 + [...title].length ? scale(accent, alpha) : edge))
-    let budget = v.note.text === null ? 0 : Math.floor(v.note.age / NOTE_TYPE_MS)
+    let budget = Math.floor(v.note.age / NOTE_TYPE_MS)
     lines.forEach((line, i) => {
         writeAbsolute(c, left, top + 1 + i, '│', edge)
         writeAbsolute(c, left + width - 1, top + 1 + i, '│', edge)
-        if (v.note?.text === null) {
-            writeAbsolute(c, left + 2, top + 1 + i, '·'.repeat(1 + (Math.floor(v.t / 250) % 3)), scale(BUBBLE_TEXT, alpha))
-            return
-        }
         const shown = [...line].slice(0, Math.max(0, budget)).join('')
         budget -= [...line].length
         writeAbsolute(c, left + 2, top + 1 + i, shown, scale(BUBBLE_TEXT, alpha))

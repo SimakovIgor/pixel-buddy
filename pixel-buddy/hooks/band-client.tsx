@@ -21,7 +21,7 @@ export type BandProps = {
     hatchAt: number | null
     leave: { species: SpeciesId; at: number } | null
     jumpAt: number | null
-    note: { title: string; text: string | null; at: number } | null
+    note: { title: string; text: string; at: number } | null
     action: { kind: ActionKind; at: number } | null
     season: Season
     neighbors: Neighbor[]

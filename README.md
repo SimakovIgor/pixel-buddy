@@ -14,7 +14,8 @@ At the prompt of a terminal session:
 ```
 
 Answer `y` to add the marketplace, then pick a scope. From a shell it is
-`claude plugin install pixel-buddy --marketplace SimakovIgor/pixel-buddy`. To remove it: `/plugin uninstall pixel-buddy`.
+`claude plugin install pixel-buddy --marketplace SimakovIgor/pixel-buddy`. To update it:
+`claude plugin update pixel-buddy@simakovigor`. To remove it: `/plugin uninstall pixel-buddy`.
 
 ![Cat, duck, ghost, octopus, axolotl, robot, ninja and penguin](pixel-buddy/docs/species.png)
 

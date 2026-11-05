@@ -75,7 +75,6 @@ test('/buddy shows the card of the stored buddy', async ($, on) => {
 
 test('a click on the buddy pets him and he answers in a bubble', async ($, on) => {
     stubEngine(on)
-    on('ui.selection', () => ({ value: undefined }))
     on('store.get', () => ({ value: { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -169,50 +168,6 @@ test('the buddy turns to the cursor and runs after it along the band', async ($,
     await ui.unmount()
 })
 
-test('a click on the buddy explains the selected word in a big bubble', async ($, on) => {
-    stubEngine(on)
-    on('store.get', () => ({ value: { name: 'Mochi', species: 'ninja', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }))
-    on('ui.selection', () => ({ value: { text: ' actuator ' } }))
-    on('model.complete', () => ({
-        value: {
-            isAnswered: true,
-            text: 'A Spring Boot module with health and metrics endpoints.',
-            usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-        },
-    }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    await ui.pointer({ type: 'down', x: 56, y: 1, button: 'left', in: 'buddy-band' })
-    await ui.pointer({ type: 'up', x: 56, y: 1, button: 'left', in: 'buddy-band' })
-    await ui.advance(100)
-    await ui.redraw()
-
-    expect(await ui.find({ type: 'Text', text: /actuator/, in: 'buddy-band' })).toBeTruthy()
-    await ui.unmount()
-})
-
-test('the same selection is explained once, later clicks close the bubble and pet', async ($, on) => {
-    stubEngine(on)
-    on('store.get', () => ({ value: { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }))
-    on('ui.selection', () => ({ value: { text: 'actuator', requestId: 'row-1' } }))
-    let asked = 0
-    on('model.complete', () => {
-        asked += 1
-
-        return { value: { isAnswered: true, text: 'A Spring Boot module.', usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }
-    })
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    for (const click of ['explains', 'closes the bubble', 'pets']) {
-        await ui.post({ type: 'pet', click }, { in: 'buddy-band' })
-    }
-
-    expect(asked).toBe(1)
-    await ui.unmount()
-})
-
 test('/buddy fruit, with a comma still runs the command', async ($, on) => {
     stubEngine(on)
     on('store.get', () => ({ value: { name: 'Mochi', species: 'ninja', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }))
@@ -273,7 +228,7 @@ test('a session waiting for you shows up on the left and its click lists what it
     on('store.keys', () => ({ value: Object.keys(store) }))
     on('session.id', () => ({ value: 'me' }))
     on('session.root', () => ({ value: '/work/billing-service' }))
-    on('process.run', () => ({ value: { exitCode: 0, stdout: 'feature/PAY-150-x\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+    on('fs.read', (_, e) => (e.path === '/work/billing-service/.git/HEAD' ? { value: 'ref: refs/heads/feature/PAY-150-x\n' } : { deny: 'no such file' }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
@@ -775,6 +730,29 @@ test('a session that ends its turn with work left in the background is working, 
     expect(store['session:me']).toMatchObject({ status: 'waiting', reason: null })
 })
 
+test('a session in a git worktree finds its branch through the .git file, and runs no programs', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: NOODLE }
+    storeOn(on, store)
+    on('session.root', () => ({ value: '/work/api-refunds/service' }))
+    const files: Record<string, string> = {
+        '/work/api-refunds/.git': 'gitdir: /work/api/.git/worktrees/api-refunds\n',
+        '/work/api/.git/worktrees/api-refunds/HEAD': 'ref: refs/heads/feature/PAY-7-refunds\n',
+    }
+    on('fs.read', (_, e) => (files[e.path] === undefined ? { deny: 'no such file' } : { value: files[e.path] }))
+    let programs = 0
+    on('process.run', () => {
+        programs += 1
+
+        return { deny: 'no programs here' }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+    expect(store['session:me']).toMatchObject({ place: { folder: 'service', branch: 'feature/PAY-7-refunds', task: 'PAY-7' } })
+    expect(programs).toBe(0)
+})
+
 test('the status a session shares keeps no words of the conversation', async ($, on) => {
     stubEngine(on)
     const store: Record<string, unknown> = { buddy: NOODLE }
@@ -838,29 +816,6 @@ test('a long turn the person interrupted is not celebrated, a long answered one 
 
     expect(interrupted).not.toContain('"mood":"happy"')
     expect(answered).toContain('"mood":"happy"')
-    await ui.unmount()
-})
-
-test('a word explanation the model refused does not block the next one', async ($, on) => {
-    stubEngine(on)
-    on('store.get', () => ({ value: NOODLE }))
-    on('store.set', () => ({ value: undefined }))
-    let word = 'actuator'
-    let asked = 0
-    on('ui.selection', () => ({ value: { text: word, requestId: 'row-1' } }))
-    on('model.complete', () => {
-        asked += 1
-
-        return { deny: 'haiku is blocked by policy' }
-    })
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    await ui.post({ type: 'pet' }, { in: 'buddy-band' })
-    word = 'outbox'
-    await ui.post({ type: 'pet' }, { in: 'buddy-band' })
-
-    expect(asked).toBe(2)
     await ui.unmount()
 })
 
