@@ -5,7 +5,7 @@
 A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, grows a
 level at a time, shows its mood, does tricks while Claude thinks, naps when you are away and plays with you on clicks.
 
-![Pixel Buddy in the Claude Code footer: the spinner stays right above the prompt, the ninja slices fruit next to the status line](docs/footer.png)
+![An answer from Claude drops a cookie, the ninja walks over and eats it. A commit drops a cake and brings level 3](docs/feed.gif)
 
 ## Install
 
@@ -110,7 +110,11 @@ and a buddy resting in the nest does not get hungry or lonely. Each window keeps
 - **Dresses for the season.** A witch hat and bats around Halloween, a Santa hat and snow in December. The ninja slices
   pumpkins or tangerines then
 
+![Pixel Buddy in a real Claude Code footer: the spinner stays right above the prompt, the ninja slices fruit next to the status line](docs/footer.png)
+
 ## It lives on clicks
+
+![A click pets the cat and it purrs with hearts, a double click makes it dash, a click on an empty spot throws a ball it runs to catch](docs/play.gif)
 
 | Do | What happens |
 | --- | --- |
@@ -124,6 +128,8 @@ and a buddy resting in the nest does not get hungry or lonely. Each window keeps
 ## The menu
 
 A right click opens it. Its first line sums the buddy up: name, level, belly, love and mood.
+
+![A right click opens the menu with the summary line, card opens the buddy's card in a frame above the prompt](docs/card.gif)
 
 | Item | What it does |
 | --- | --- |
