@@ -84,11 +84,11 @@ says what it was for.
 | Shiny! | legendary | a shiny buddy in your nest |
 | Legend | legendary | a legendary buddy in your nest |
 
-Six more are secret: they show only a question mark until you find them. The code is open, but finding them yourself
+Six more are secret: they show a question mark until you find them. The code is open, but finding them yourself
 is more fun.
 
-`trophies` in the menu opens your trophy case above the prompt. Each trophy is a pixel badge: round for rare, a
-hexagon for epic, a shield for legendary. `/buddy trophies` also lists the hints for the ones still open.
+`trophies` in the menu or `/buddy trophies` opens your trophy case above the prompt. Each trophy is a pixel badge:
+round for rare, a hexagon for epic, a shield for legendary.
 
 ![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](docs/trophy-case.png)
 
@@ -154,7 +154,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | Command | What it does |
 | --- | --- |
 | `/buddy` | its full card in the chat, stats and personality included |
-| `/buddy trophies` | opens the trophy case and lists the hints |
+| `/buddy trophies` | opens the trophy case |
 | `/buddy share` | the share card, copied and printed |
 | `/buddy name <name>` | rename it |
 | `/buddy feed` | a berry |

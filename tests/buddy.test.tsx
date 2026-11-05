@@ -1076,12 +1076,7 @@ test('a legendary and a shiny buddy already in the nest earn Legend and Shiny! o
     const result = await $.command.run({ command: 'buddy', args: 'trophies' } as Parameters<typeof $.command.run>[0])
 
     expect(trophiesIn(store)).toEqual(['shiny', 'legend'])
-    expect(result.text).toContain('Trophies: 2 of 14 found')
-    expect(result.text).toMatch(/👑 Legend · legendary · a legendary buddy in your nest · found \d{4}-\d{2}-\d{2}/)
-    expect(result.text).toContain('✨ Shiny! · legendary')
-    expect(result.text).toContain('○  Night Owl · rare · a commit between 2 and 5 at night')
-    expect(result.text).toContain('?  a secret epic one')
-    expect(result.text).not.toContain('1337')
+    expect(result.text).toBe('2 of 14 trophies, the case is open above the prompt. Don\'t see it? Click "▸ plugin panel hidden" there')
 })
 
 test('green tests soon after three failures in a row earn Comeback, a duck petted then earns Rubber Duck', async ($, on) => {

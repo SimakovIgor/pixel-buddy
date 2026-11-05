@@ -120,18 +120,3 @@ export const toastOf = (id: TrophyId, found: Found): string => {
 
     return `${trophy.emoji} Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found. Menu → share to show it off`
 }
-
-export const listOf = (found: Found): string => {
-    const open = TROPHIES.filter(one => found[one.id] === undefined).map(one => (one.isSecret
-        ? `  ?  a secret ${one.rarity} one`
-        : `  ○  ${one.name} · ${one.rarity} · ${one.hint}`))
-    const mine = foundOrder(found).map(one => `  ${one.emoji} ${one.name} · ${one.rarity} · ${one.hint} · found ${dayKeyOf(found[one.id] ?? 0)}`)
-
-    return [
-        `Trophies: ${countOf(found)} of ${TROPHIES.length} found`,
-        ...mine,
-        ...(open.length === 0 ? [] : ['', 'Still to find:', ...open]),
-        '',
-        'A secret one shows its name once you find it. Menu → trophies opens the case, menu → share shows it off.',
-    ].join('\n')
-}

@@ -10,7 +10,7 @@ import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS
 import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
-import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, foundOf, listOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
+import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
 import type { Found, TrophyId } from './trophies'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
@@ -533,11 +533,9 @@ const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
             <Box flexDirection="row">
                 <Text color={hexOf(CASE_GOLD)} weight="bold">trophies </Text>
                 <Text>{countOf(found)} of {TROPHIES.length}</Text>
-                <Text dimColor>{latest === undefined ? ' · rare moments of your work earn them' : ` · the latest: ${latest.name}, ${latest.hint}`}</Text>
+                <Text dimColor>{latest === undefined ? ' · rare moments of your work earn them' : ` · the latest: ${latest.name}`} · menu → share shows them off</Text>
             </Box>
-            <Text> </Text>
             {Raster({ key: 'trophy-badges', columns: shown.columns, rows: shown.rows, cells: encode(shown.cells) })}
-            <Text dimColor>/buddy trophies lists the hints · menu → share shows them off</Text>
         </Box>
     )
 }
@@ -898,7 +896,7 @@ const help = (): string => [
     '',
     'Commands:',
     '  /buddy               its full card with stats and personality',
-    '  /buddy trophies      the trophy case and the hints for the ones still open',
+    '  /buddy trophies      open the trophy case',
     '  /buddy share         copy a card of your buddy to show it off',
     '  /buddy name <name>   rename it',
     '  /buddy feed          a berry',
@@ -928,7 +926,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         cardAt = null
         $.ui.invalidate('ui.render')
 
-        return listOf(found)
+        return `${countOf(found)} of ${TROPHIES.length} trophies, the case is open above the prompt. Don't see it? Click "▸ plugin panel hidden" there`
     }
     if (arg === 'share') {
         const text = shareOf(current, found)
