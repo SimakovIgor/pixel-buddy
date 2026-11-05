@@ -229,7 +229,7 @@ test('a new egg from the menu keeps the old buddy in the nest with its level, an
     await ui.post({ type: 'menu', key: 'hatch:octopus' }, { in: 'buddy-band' })
     await ui.redraw()
     const swap = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
-    const afterHatch = { buddy: store.buddy, nest: store.nest }
+    const afterHatch = { buddy: petIn(store), mochi: store['pet:1'] }
     now += 5 * 3600000
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
     await ui.post({ type: 'menu', key: 'nest' }, { in: 'buddy-band' })
@@ -242,22 +242,23 @@ test('a new egg from the menu keeps the old buddy in the nest with its level, an
     expect(nestPage).toContain('"egg"')
     expect(species).toContain('"octopus"')
     expect(afterHatch.buddy).toMatchObject({ species: 'octopus', xp: 0 })
-    expect(afterHatch.nest).toMatchObject([{ name: 'Mochi', xp: 42 }])
+    expect(afterHatch.mochi).toMatchObject({ name: 'Mochi', xp: 42 })
     expect(swap).toContain('"leave":{"species":"cat"')
-    expect(store.buddy).toMatchObject({ name: 'Mochi', xp: 42, belly: { value: 70, at: now }, affection: { value: 80, at: now } })
-    expect(store.nest).toMatchObject([{ species: 'octopus' }])
+    expect(petIn(store)).toMatchObject({ name: 'Mochi', xp: 42, belly: { value: 70, at: now }, affection: { value: 80, at: now } })
+    expect(Object.keys(store).filter(key => key.startsWith('pet:'))).toHaveLength(2)
 })
 
-test('if the buddy cannot be read, the last one from the nest comes back instead of a new egg', async ($, on) => {
+test('if the chosen buddy cannot be read, the latest one comes back instead of a new egg', async ($, on) => {
     stubEngine(on)
-    const kept = { ...NOODLE, hatchedAt: 7, xp: 90 }
-    const store: Record<string, unknown> = { nest: [{ ...NOODLE, hatchedAt: 3, name: 'Old' }, kept] }
+    const store: Record<string, unknown> = { main: 999, 'pet:3': { ...NOODLE, hatchedAt: 3, name: 'Old' }, 'pet:7': { ...NOODLE, hatchedAt: 7, xp: 90 } }
     storeOn(on, store)
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
 
-    expect(store.buddy).toMatchObject({ hatchedAt: 7, xp: 90 })
-    expect(store.nest).toMatchObject([{ name: 'Old' }])
+    expect(card.text).toContain('Noodle · ninja')
+    expect(card.text).toContain('level 4')
+    expect(Object.keys(store).filter(key => key.startsWith('pet:'))).toEqual(['pet:3', 'pet:7'])
 })
 
 test('the nest holds twelve buddies, then it asks to pick one instead of hatching', async ($, on) => {
@@ -269,7 +270,7 @@ test('the nest holds twelve buddies, then it asks to pick one instead of hatchin
     const result = await $.command.run({ command: 'buddy', args: 'hatch cat' } as Parameters<typeof $.command.run>[0])
 
     expect(result.text).toBe('Your nest is full: 12 buddies')
-    expect(store.buddy).toBe(NOODLE)
+    expect(Object.keys(store).filter(key => key.startsWith('pet:'))).toHaveLength(12)
 })
 
 test('a right click anywhere on the band opens the menu, a second one closes it', async ($, on) => {
@@ -545,7 +546,14 @@ const storeOn = (on: On, store: Record<string, unknown>) => {
         return { value: undefined }
     })
     on('store.keys', () => ({ value: Object.keys(store) }))
+    on('store.delete', (_, e) => {
+        delete store[(e as { key: string }).key]
+
+        return { value: undefined }
+    })
 }
+
+const petIn = (store: Record<string, unknown>): Buddy | undefined => store[`pet:${String(store.main)}`] as Buddy | undefined
 
 test('test runs are told apart from builds, excluded tests and pipes that hide the exit code', () => {
     const runs = ['./gradlew test', 'cd service && ./gradlew functionalTest', 'go test ./...', 'cargo test', 'pytest -q', 'npx jest', 'vitest run', 'npm run test', 'mvn -q verify']
@@ -559,15 +567,10 @@ test('keys older versions kept, session entries among them, are removed from the
     stubEngine(on)
     const store: Record<string, unknown> = { buddy: NOODLE, theme: 'off', lang: 'ru', tropic: true, 'session:old': { status: 'waiting', title: 'Refunds for Jane Doe' } }
     storeOn(on, store)
-    on('store.delete', (_, e) => {
-        delete store[(e as { key: string }).key]
-
-        return { value: undefined }
-    })
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
-    expect(Object.keys(store).sort()).toEqual(['buddy', 'theme'])
+    expect(Object.keys(store).sort()).toEqual(['main', 'pet:0', 'theme'])
 })
 
 test('a long turn the person interrupted is not celebrated, a long answered one is', async ($, on) => {
@@ -696,7 +699,7 @@ test('an answer from Claude drops a cookie, and eating it gives xp and fills the
     await ui.redraw()
 
     expect(snack?.kind).toBe('cookie')
-    expect(store.buddy).toMatchObject({ xp: 10, belly: { value: 56, at: now } })
+    expect(petIn(store)).toMatchObject({ xp: 10, belly: { value: 56, at: now } })
     expect(await snackOf(ui)).toBeNull()
     expect(JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))).toContain('"text":"level 2!"')
     await ui.unmount()
@@ -712,13 +715,13 @@ test('the buddy walks to a fallen snack and eats it by itself', async ($, on) =>
     const ui = await $.ui.mount(BAND)
     await $.command.run({ command: 'buddy', args: 'feed' } as Parameters<typeof $.command.run>[0])
     await ui.redraw()
-    for (let elapsed = 0; elapsed < 3500 && (store.buddy as Buddy).xp === 0; elapsed += 50) {
+    for (let elapsed = 0; elapsed < 3500 && petIn(store)?.xp === 0; elapsed += 50) {
         await realPause(50)
         await ui.advance(50)
     }
 
-    expect((store.buddy as Buddy).belly?.value).toBeGreaterThan(20)
-    expect((store.buddy as Buddy).xp).toBe(1)
+    expect(petIn(store)?.belly?.value).toBeGreaterThan(20)
+    expect(petIn(store)?.xp).toBe(1)
     await ui.unmount()
 })
 
@@ -805,7 +808,7 @@ test('petting and playing ball make the buddy feel loved, and the store keeps it
     await ui.post({ type: 'caught', kind: 'ball' }, { in: 'buddy-band' })
     await ui.unmount()
 
-    expect(store.buddy).toMatchObject({ affection: { value: 33, at: now } })
+    expect(petIn(store)).toMatchObject({ affection: { value: 33, at: now } })
 })
 
 test('two hours of work without a break make it tired, a break of ten minutes rests it', async ($, on) => {
@@ -892,4 +895,42 @@ test('the right click menu starts with a summary line, and card opens one framed
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
     expect(closed).toBeUndefined()
+})
+
+test('a session in a subfolder gets the buddy of its project, and a pick there changes the project, not the subfolder', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = {
+        main: 1,
+        homes: { '/work/api': 2 },
+        'pet:1': { ...NOODLE, hatchedAt: 1, name: 'Pixel', species: 'cat' },
+        'pet:2': { ...NOODLE, hatchedAt: 2, name: 'Byte', species: 'robot' },
+    }
+    storeOn(on, store)
+    on('session.root', () => ({ value: '/work/api/service/src' }))
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'nest' }, { in: 'buddy-band' })
+    const nestPage = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'pick:1' }, { in: 'buddy-band' })
+    await ui.unmount()
+
+    expect(card.text).toContain('Byte · robot')
+    expect(nestPage).toContain('"api"')
+    expect(store.homes).toEqual({ '/work/api': 1 })
+    expect(store.main).toBe(1)
+})
+
+test('a folder nobody picked a buddy for shows the last pick', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { main: 1, homes: { '/work/api': 2 }, 'pet:1': { ...NOODLE, hatchedAt: 1, name: 'Pixel', species: 'cat' }, 'pet:2': { ...NOODLE, hatchedAt: 2, name: 'Byte', species: 'robot' } })
+    on('session.root', () => ({ value: '/work/web' }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+
+    expect(card.text).toContain('Pixel · cat')
 })

@@ -12,8 +12,11 @@ import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
 const CLIENT_KEY = 'buddy-band'
-const STORE_KEY = 'buddy'
-const NEST_KEY = 'nest'
+const PET_PREFIX = 'pet:'
+const HOMES_KEY = 'homes'
+const MAIN_KEY = 'main'
+const LEGACY_BUDDY = 'buddy'
+const LEGACY_NEST = 'nest'
 const NEST_MAX = 12
 const HAT_KEY = 'hat'
 const THEME_KEY = 'theme'
@@ -92,6 +95,9 @@ let messages = 0
 let theme: Theme = 'auto'
 let menuPage: 'main' | 'nest' | 'species' | null = null
 let nest: Buddy[] = []
+let root = ''
+let homes: Record<string, number> = {}
+let mainId: number | null = null
 let arrivalLine: string | null = null
 let snacks: Array<{ kind: SnackKind; at: number }> = []
 let hungryNagAt = 0
@@ -127,7 +133,7 @@ const menuOf = (): Menu | null => {
 
         return {
             items: [...items, { key: isFull ? 'full' : 'new', label: isFull ? 'nest is full' : '+ new egg', isOn: false }, { key: 'back', label: '←', isOn: false }],
-            header: `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}, pick one to bring it back`,
+            header: `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}. Pick one for ${placeName()}`,
         }
     }
     const items: MenuItem[] = [
@@ -151,10 +157,69 @@ const dropLegacyKeys = async ($: EngineInterface): Promise<void> => {
     await Promise.all(keys.map(key => $.store.delete(key)))
 }
 
-const readNest = async ($: EngineInterface): Promise<Buddy[]> => {
-    const stored = await $.store.get(NEST_KEY)
+const petKey = (id: number): string => `${PET_PREFIX}${id}`
 
-    return Array.isArray(stored) ? stored.map(one => knownOf(one as Buddy)).filter((one): one is Buddy => one !== undefined) : []
+const pathsUp = (path: string): string[] => {
+    const parts = path.replace(/\\/g, '/').split('/').filter(part => part !== '')
+    const lead = path.startsWith('/') ? '/' : ''
+
+    return parts.map((_, i) => lead + parts.slice(0, parts.length - i).join('/'))
+}
+
+const homeOf = (): string | undefined => pathsUp(root).find(path => homes[path] !== undefined)
+
+const wantedId = (): number | null => {
+    const home = homeOf()
+
+    return home === undefined ? mainId : homes[home] ?? mainId
+}
+
+const placeName = (): string => {
+    const home = homeOf() ?? root
+    const name = home.replace(/\\/g, '/').split('/').filter(part => part !== '').pop()
+
+    return name === undefined ? 'every folder' : `${name} and its subfolders`
+}
+
+const readHomes = async ($: EngineInterface): Promise<Record<string, number>> => {
+    const stored = await $.store.get(HOMES_KEY).catch(() => undefined)
+    const isHomes = typeof stored === 'object' && stored !== null && !Array.isArray(stored) && Object.values(stored).every(id => typeof id === 'number')
+
+    return isHomes ? (stored as Record<string, number>) : {}
+}
+
+const readMain = async ($: EngineInterface): Promise<number | null> => {
+    const stored = await $.store.get(MAIN_KEY).catch(() => undefined)
+
+    return typeof stored === 'number' ? stored : null
+}
+
+const byAge = (a: Buddy, b: Buddy): number => a.hatchedAt - b.hatchedAt
+
+const readPets = async ($: EngineInterface): Promise<Buddy[]> => {
+    const keys = (await $.store.keys().catch(() => [] as string[])).filter(key => key.startsWith(PET_PREFIX))
+    const pets = await Promise.all(keys.map(async key => knownOf((await $.store.get(key).catch(() => undefined)) as Buddy | undefined)))
+
+    return pets.filter((one): one is Buddy => one !== undefined).sort(byAge)
+}
+
+const migrate = async ($: EngineInterface): Promise<Buddy[]> => {
+    const legacy = knownOf((await $.store.get(LEGACY_BUDDY).catch(() => undefined)) as Buddy | undefined)
+    const legacyNest = await $.store.get(LEGACY_NEST).catch(() => undefined)
+    const kept = Array.isArray(legacyNest) ? legacyNest.map(one => knownOf(one as Buddy)) : []
+    const pets = [...kept, legacy].filter((one): one is Buddy => one !== undefined).sort(byAge)
+    if (pets.length === 0) {
+        return []
+    }
+    await Promise.all(pets.map(one => $.store.set(petKey(one.hatchedAt), one).catch(() => undefined)))
+    if (legacy !== undefined) {
+        mainId = legacy.hatchedAt
+        await $.store.set(MAIN_KEY, mainId).catch(() => undefined)
+    }
+    await $.store.delete(LEGACY_BUDDY).catch(() => undefined)
+    await $.store.delete(LEGACY_NEST).catch(() => undefined)
+
+    return pets
 }
 
 const rest = (one: Buddy, now: number): Buddy =>
@@ -165,19 +230,23 @@ const wake = (one: Buddy, now: number): Buddy =>
 
 const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
     const version = buddyVersion
-    const stored = knownOf((await $.store.get(STORE_KEY)) as Buddy | undefined)
+    homes = await readHomes($)
+    mainId = await readMain($)
+    const id = wantedId()
+    const isMoved = buddy !== null && id !== null && id !== buddy.hatchedAt
+    const stored = buddy === null ? undefined : knownOf((await $.store.get(petKey(isMoved ? id ?? 0 : buddy.hatchedAt)).catch(() => undefined)) as Buddy | undefined)
     const isChangedHere = version !== buddyVersion
-    if (!isChangedHere && stored !== undefined && buddy !== null && (stored.hatchedAt !== buddy.hatchedAt || stored.name !== buddy.name)) {
-        if (stored.hatchedAt !== buddy.hatchedAt && now - stored.hatchedAt < arriveMsOf(stored.species)) {
-            hatchAt = stored.hatchedAt
-            isNewborn = true
-        }
-        buddy = stored
+    if (!isChangedHere && stored !== undefined && buddy !== null && isMoved) {
+        leave = { species: buddy.species, at: now }
+        nest = [...nest.filter(one => one.hatchedAt !== stored.hatchedAt), buddy]
+        buddy = wake(stored, now)
+        snacks = []
+        hatchAt = now + LEAVE_MS
+        arrivalLine = `${stored.name} is here!`
     } else if (!isChangedHere && stored !== undefined && buddy !== null) {
-        buddy = { ...buddy, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly, affection: stored.affection ?? buddy.affection }
+        buddy = { ...buddy, name: stored.name, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly, affection: stored.affection ?? buddy.affection }
     }
     theme = await readTheme($)
-    nest = await readNest($)
 }
 
 const isHolidays = (now: number): boolean => {
@@ -304,7 +373,7 @@ const feelingOf = (now: number): Feeling => vibeOf({
 
 const saveBuddy = ($: EngineInterface, next: Buddy): void => {
     buddy = next
-    void $.store.set(STORE_KEY, next).catch((error: unknown) => {
+    void $.store.set(petKey(next.hatchedAt), next).catch((error: unknown) => {
         lastDeny = `store failed: ${String(error)}`
     })
 }
@@ -348,7 +417,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                     <Text>love  {bar(love)} {love}%</Text>
                 </Box>
             </Box>
-            <Text dimColor>{nest.length + 1} in your nest · card in the menu closes it · /buddy shows stats</Text>
+            <Text dimColor>lives in {placeName()} · {nest.length + 1} in your nest · card in the menu closes it</Text>
         </Box>
     )
 }
@@ -604,31 +673,37 @@ const knownOf = (stored: Buddy | undefined): Buddy | undefined => {
 }
 
 const loadBuddy = async ($: EngineInterface, now: number): Promise<void> => {
-    const read = async () => knownOf((await $.store.get(STORE_KEY)) as Buddy | undefined)
-    const stored = (await read()) ?? (await $.clock.sleep(150).catch(() => undefined).then(read))
-    nest = await readNest($)
+    root = await $.session.root().catch(() => '')
+    homes = await readHomes($)
+    mainId = await readMain($)
+    const found = await readPets($)
+    const migrated = found.length > 0 ? found : await migrate($)
+    const pets = migrated.length > 0 ? migrated : await $.clock.sleep(150).catch(() => undefined).then(() => readPets($))
     isArrivalPending = true
-    if (stored !== undefined) {
-        buddy = stored
-        return
-    }
-    const latest = [...nest].sort((a, b) => b.hatchedAt - a.hatchedAt)[0]
-    if (latest !== undefined) {
-        nest = nest.filter(one => one !== latest)
-        buddy = wake(latest, now)
-        await $.store.set(NEST_KEY, nest)
-        await $.store.set(STORE_KEY, buddy)
+    const id = wantedId()
+    const chosen = pets.find(one => one.hatchedAt === id) ?? pets[pets.length - 1]
+    if (chosen !== undefined) {
+        buddy = wake(chosen, now)
+        nest = pets.filter(one => one !== chosen)
+        if (mainId === null) {
+            mainId = chosen.hatchedAt
+            await $.store.set(MAIN_KEY, mainId)
+        }
 
         return
     }
     buddy = hatch(random, now)
     isNewborn = true
-    await $.store.set(STORE_KEY, buddy)
+    nest = []
+    mainId = buddy.hatchedAt
+    await $.store.set(petKey(buddy.hatchedAt), buddy)
+    await $.store.set(MAIN_KEY, mainId)
 }
 
 const swapTo = async ($: EngineInterface, now: number, next: Buddy, isNew: boolean): Promise<void> => {
-    leave = buddy === null ? null : { species: buddy.species, at: now }
-    nest = [...nest.filter(one => one.hatchedAt !== next.hatchedAt), ...(buddy === null ? [] : [rest(buddy, now)])]
+    const previous = buddy === null ? null : rest(buddy, now)
+    leave = previous === null ? null : { species: previous.species, at: now }
+    nest = [...nest.filter(one => one.hatchedAt !== next.hatchedAt), ...(previous === null ? [] : [previous])]
     buddy = next
     snacks = []
     joy = null
@@ -636,8 +711,15 @@ const swapTo = async ($: EngineInterface, now: number, next: Buddy, isNew: boole
     hatchAt = leave === null ? now : now + LEAVE_MS
     isNewborn = isNew
     bubble = null
-    await $.store.set(NEST_KEY, nest)
-    await $.store.set(STORE_KEY, buddy)
+    const home = homeOf() ?? root
+    homes = home === '' ? await readHomes($) : { ...(await readHomes($)), [home]: next.hatchedAt }
+    mainId = next.hatchedAt
+    if (previous !== null) {
+        await $.store.set(petKey(previous.hatchedAt), previous)
+    }
+    await $.store.set(petKey(next.hatchedAt), next)
+    await $.store.set(HOMES_KEY, homes)
+    await $.store.set(MAIN_KEY, mainId)
 }
 
 const bringBack = async ($: EngineInterface, now: number, hatchedAt: number): Promise<void> => {
@@ -671,6 +753,7 @@ const help = (): string => [
     '',
     'Buddies: every buddy you hatch stays in your nest with its level, belly and love.',
     'Pick one in the menu to bring it back, or hatch a new egg. Nobody is lost.',
+    'Each project keeps the buddy you picked there, subfolders included. Other folders show your last pick.',
     '',
     'It eats what your work drops: a cookie for each answer from Claude, a fish for green tests,',
     'a cake for a commit or a finished plan. Snacks give it xp, levels come from xp.',
@@ -754,7 +837,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     if (arg === 'name' && rest.length > 0) {
         buddy = { ...current, name: rest.join(' ').slice(0, 14) }
         buddyVersion += 1
-        await $.store.set(STORE_KEY, buddy)
+        await $.store.set(petKey(buddy.hatchedAt), buddy)
         sayText(`I'm ${buddy.name} now`, now)
 
         return `Renamed to ${buddy.name}`
@@ -792,6 +875,7 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         feedByHand(now)
     } else if (key === 'nest') {
         menuPage = 'nest'
+        nest = (await readPets($)).filter(one => one.hatchedAt !== buddy?.hatchedAt)
     } else if (key.startsWith('pick:')) {
         menuPage = null
         await bringBack($, now, Number(key.slice('pick:'.length)))

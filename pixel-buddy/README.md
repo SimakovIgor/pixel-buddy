@@ -62,9 +62,11 @@ Eight species. A buddy hatches with a name, a rarity and five stats, all rolled 
   on top it teases you, otherwise it cheers you on
 - **Shiny:** 1 egg in 100 hatches a buddy in other colors that twinkles now and then
 
-One buddy at a time, shared by all your sessions. Every buddy you hatch stays in your nest with its level, belly and
-love: `buddies` in the menu brings any of them back or hatches a new egg, up to 12. Nobody is lost, and a buddy resting
-in the nest does not get hungry or lonely.
+Every buddy you hatch stays in your nest with its level, belly and love: `buddies` in the menu brings any of them back
+or hatches a new egg, up to 12. Nobody is lost, and a buddy resting in the nest does not get hungry or lonely.
+
+Each project keeps its own buddy. Pick one in a folder and every session there, subfolders included, shows it: a ninja
+for the backend, a cat for the frontend. A folder you never picked for shows your last pick.
 
 ## What it does
 
@@ -122,8 +124,8 @@ Only for what a click cannot do:
 
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
-- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy and the ones in your nest
-  with their names, stats, xp, belly and love, the theme and the hat switch. Session entries an older version kept are removed when a session starts
+- **What it keeps, on this machine only,** in the plugin store of Claude Code: your buddies with their names, stats,
+  xp, belly and love, the paths of the folders you picked a buddy for, the theme and the hat switch. Session entries an older version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
