@@ -13,6 +13,8 @@ import type { SpeciesId } from './species'
 
 const CLIENT_KEY = 'buddy-band'
 const STORE_KEY = 'buddy'
+const NEST_KEY = 'nest'
+const NEST_MAX = 12
 const HAT_KEY = 'hat'
 const THEME_KEY = 'theme'
 const THEMES = ['auto', 'winter', 'halloween', 'off'] as const
@@ -88,7 +90,9 @@ let cols = WIDTH
 let jumpAt: number | null = null
 let messages = 0
 let theme: Theme = 'auto'
-let menuPage: 'main' | 'species' | null = null
+let menuPage: 'main' | 'nest' | 'species' | null = null
+let nest: Buddy[] = []
+let arrivalLine: string | null = null
 let snacks: Array<{ kind: SnackKind; at: number }> = []
 let hungryNagAt = 0
 let tiredNagAt = 0
@@ -109,14 +113,27 @@ const menuOf = (): Menu | null => {
         return null
     }
     if (menuPage === 'species') {
-        const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: one.name, isOn: one.id === buddy?.species }))
+        const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: one.name, isOn: false }))
 
-        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }] }
+        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }], header: 'a new egg: pick a species, everyone else stays in your nest' }
+    }
+    if (menuPage === 'nest') {
+        const items: MenuItem[] = [buddy, ...nest].map(one => ({
+            key: one === buddy ? 'close' : `pick:${one.hatchedAt}`,
+            label: `${one.name} ${speciesOf(one.species).name} lv${levelOf(one.xp ?? 0).level}${one.isShiny === true ? ' ✦' : ''}`,
+            isOn: one === buddy,
+        }))
+        const isFull = nest.length + 1 >= NEST_MAX
+
+        return {
+            items: [...items, { key: isFull ? 'full' : 'new', label: isFull ? 'nest is full' : '+ new egg', isOn: false }, { key: 'back', label: '←', isOn: false }],
+            header: `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}, pick one to bring it back`,
+        }
     }
     const items: MenuItem[] = [
         { key: 'card', label: 'card', isOn: false },
         { key: 'feed', label: 'feed', isOn: false },
-        { key: 'new', label: 'change buddy', isOn: false },
+        { key: 'nest', label: 'buddies', isOn: false },
         { key: 'theme', label: `theme: ${theme}`, isOn: theme !== 'auto' && theme !== 'off' },
         { key: 'hide', label: 'hide', isOn: false },
         { key: 'close', label: '×', isOn: false },
@@ -134,6 +151,18 @@ const dropLegacyKeys = async ($: EngineInterface): Promise<void> => {
     await Promise.all(keys.map(key => $.store.delete(key)))
 }
 
+const readNest = async ($: EngineInterface): Promise<Buddy[]> => {
+    const stored = await $.store.get(NEST_KEY)
+
+    return Array.isArray(stored) ? stored.map(one => knownOf(one as Buddy)).filter((one): one is Buddy => one !== undefined) : []
+}
+
+const rest = (one: Buddy, now: number): Buddy =>
+    ({ ...one, belly: { value: Math.round(fullnessOf(one, now)), at: now }, affection: { value: Math.round(affectionOf(one, now)), at: now } })
+
+const wake = (one: Buddy, now: number): Buddy =>
+    ({ ...one, belly: { value: one.belly?.value ?? 60, at: now }, affection: { value: one.affection?.value ?? 60, at: now } })
+
 const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
     const version = buddyVersion
     const stored = knownOf((await $.store.get(STORE_KEY)) as Buddy | undefined)
@@ -148,6 +177,7 @@ const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
         buddy = { ...buddy, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly, affection: stored.affection ?? buddy.affection }
     }
     theme = await readTheme($)
+    nest = await readNest($)
 }
 
 const isHolidays = (now: number): boolean => {
@@ -318,7 +348,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                     <Text>love  {bar(love)} {love}%</Text>
                 </Box>
             </Box>
-            <Text dimColor>card in the menu closes it · /buddy shows stats and personality</Text>
+            <Text dimColor>{nest.length + 1} in your nest · card in the menu closes it · /buddy shows stats</Text>
         </Box>
     )
 }
@@ -491,8 +521,12 @@ const frame = async ($: EngineInterface): Promise<void> => {
         if (isNewborn) {
             sayText(introOf(buddy), now)
             setMood('happy', now)
+        } else if (arrivalLine !== null) {
+            sayText(arrivalLine, now)
+            setMood('happy', now)
         }
         isNewborn = false
+        arrivalLine = null
     }
     if (leave !== null && now - leave.at > LEAVE_MS) {
         leave = null
@@ -570,10 +604,21 @@ const knownOf = (stored: Buddy | undefined): Buddy | undefined => {
 }
 
 const loadBuddy = async ($: EngineInterface, now: number): Promise<void> => {
-    const stored = knownOf((await $.store.get(STORE_KEY)) as Buddy | undefined)
+    const read = async () => knownOf((await $.store.get(STORE_KEY)) as Buddy | undefined)
+    const stored = (await read()) ?? (await $.clock.sleep(150).catch(() => undefined).then(read))
+    nest = await readNest($)
     isArrivalPending = true
     if (stored !== undefined) {
         buddy = stored
+        return
+    }
+    const latest = [...nest].sort((a, b) => b.hatchedAt - a.hatchedAt)[0]
+    if (latest !== undefined) {
+        nest = nest.filter(one => one !== latest)
+        buddy = wake(latest, now)
+        await $.store.set(NEST_KEY, nest)
+        await $.store.set(STORE_KEY, buddy)
+
         return
     }
     buddy = hatch(random, now)
@@ -581,16 +626,35 @@ const loadBuddy = async ($: EngineInterface, now: number): Promise<void> => {
     await $.store.set(STORE_KEY, buddy)
 }
 
-const rehatch = async ($: EngineInterface, now: number, species?: SpeciesId): Promise<void> => {
+const swapTo = async ($: EngineInterface, now: number, next: Buddy, isNew: boolean): Promise<void> => {
     leave = buddy === null ? null : { species: buddy.species, at: now }
-    buddy = hatch(random, now, species)
+    nest = [...nest.filter(one => one.hatchedAt !== next.hatchedAt), ...(buddy === null ? [] : [rest(buddy, now)])]
+    buddy = next
     snacks = []
     joy = null
     buddyVersion += 1
     hatchAt = leave === null ? now : now + LEAVE_MS
-    isNewborn = true
+    isNewborn = isNew
     bubble = null
+    await $.store.set(NEST_KEY, nest)
     await $.store.set(STORE_KEY, buddy)
+}
+
+const bringBack = async ($: EngineInterface, now: number, hatchedAt: number): Promise<void> => {
+    const chosen = nest.find(one => one.hatchedAt === hatchedAt)
+    if (chosen !== undefined) {
+        await swapTo($, now, wake(chosen, now), false)
+        arrivalLine = `${chosen.name} is back!`
+    }
+}
+
+const rehatch = async ($: EngineInterface, now: number, species?: SpeciesId): Promise<boolean> => {
+    if (nest.length + 1 >= NEST_MAX) {
+        return false
+    }
+    await swapTo($, now, hatch(random, now, species), true)
+
+    return true
 }
 
 const TEST_RUNNERS = /(^|[\s;&/])(gradlew\s+(\S+\s+)*(?<!-x\s)(\w*[tT]est|check)|mvn\s+(\S+\s+)*(test|verify)|(npm|pnpm|yarn|bun)\s+(run\s+)?test|go\s+test|cargo\s+test|pytest|jest|vitest|dotnet\s+test|rspec|phpunit)\b/
@@ -603,7 +667,10 @@ const help = (): string => [
     '  double click      jump',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu with a summary line: card, feed, change buddy, theme (calendar, winter, halloween, off), hide',
+    '  right click       menu with a summary line: card, feed, buddies, theme (calendar, winter, halloween, off), hide',
+    '',
+    'Buddies: every buddy you hatch stays in your nest with its level, belly and love.',
+    'Pick one in the menu to bring it back, or hatch a new egg. Nobody is lost.',
     '',
     'It eats what your work drops: a cookie for each answer from Claude, a fish for green tests,',
     'a cake for a commit or a finished plan. Snacks give it xp, levels come from xp.',
@@ -632,7 +699,10 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
     const current = buddy as Buddy
     if (arg === '' || arg === 'card') {
-        return `${cardOf(current, now, feelingOf(now))}\n\nMenu: right click on the strip\n/buddy name <new name> · /buddy feed · /buddy on · /buddy help`
+        const others = nest.map(one => `${one.name} the ${speciesOf(one.species).name}, lv${levelOf(one.xp ?? 0).level}`).join(' · ')
+        const nestLine = nest.length === 0 ? 'your nest: just this one so far' : `also in your nest: ${others}`
+
+        return `${cardOf(current, now, feelingOf(now))}\n\n${nestLine}\nMenu: right click on the strip\n/buddy name <new name> · /buddy feed · /buddy on · /buddy help`
     }
     if (arg === 'feed') {
         return feedByHand(now)
@@ -679,9 +749,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         if (rest[0] !== undefined && wanted === undefined) {
             return `No such species. There are: ${speciesList()}`
         }
-        await rehatch($, now, wanted?.id)
-
-        return 'Hatching…'
+        return (await rehatch($, now, wanted?.id)) ? `Hatching… ${current.name} waits in your nest` : `Your nest is full: ${NEST_MAX} buddies`
     }
     if (arg === 'name' && rest.length > 0) {
         buddy = { ...current, name: rest.join(' ').slice(0, 14) }
@@ -712,7 +780,9 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
 }
 
 const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<void> => {
-    if (key === 'open' || key === 'back') {
+    if (key === 'back' && menuPage === 'species') {
+        menuPage = 'nest'
+    } else if (key === 'open' || key === 'back') {
         menuPage = 'main'
     } else if (key === 'card') {
         menuPage = null
@@ -720,6 +790,13 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     } else if (key === 'feed') {
         menuPage = null
         feedByHand(now)
+    } else if (key === 'nest') {
+        menuPage = 'nest'
+    } else if (key.startsWith('pick:')) {
+        menuPage = null
+        await bringBack($, now, Number(key.slice('pick:'.length)))
+    } else if (key === 'full') {
+        sayText(`my nest is full: ${NEST_MAX} buddies`, now)
     } else if (key === 'new') {
         menuPage = 'species'
     } else if (key.startsWith('hatch:')) {

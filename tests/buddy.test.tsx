@@ -31,6 +31,7 @@ const stubEngine = (on: On, clock = () => Date.now(), hasFrames = false) => {
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('clock.every', () => (hasFrames ? { value: undefined } : { deny: 'no frames in this test' }))
     on('clock.now', () => ({ value: clock() }))
+    on('clock.sleep', () => ({ value: undefined }))
     on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
     on('command.register', () => ({ value: { command: 'buddy' } }))
     on('ui.render', ($, e) => {
@@ -209,45 +210,66 @@ test('/buddy theme goes around calendar, winter, halloween and off', async ($, o
     expect(replies).toEqual(['Santa hat on, snow is falling', 'Boo! Witch hat on', 'No theme', 'Theme follows the calendar'])
 })
 
-test('the menu picks a species and hatches it', async ($, on) => {
+test('a new egg from the menu keeps the old buddy in the nest with its level, and it can come back', async ($, on) => {
     let now = Date.now()
     stubEngine(on, () => now)
-    const store: Record<string, unknown> = { buddy: { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }
-    on('store.get', (_, e) => ({ value: store[(e as { key: string }).key] }))
-    on('store.set', (_, e) => {
-        const { key, value } = e as { key: string; value: unknown }
-        store[key] = value
-
-        return { value: undefined }
-    })
+    const mochi = { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 1, xp: 42, belly: { value: 70, at: now }, affection: { value: 80, at: now } }
+    const store: Record<string, unknown> = { buddy: mochi }
+    storeOn(on, store)
     on('ui.invalidate', () => ({ value: undefined }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
     const main = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'nest' }, { in: 'buddy-band' })
+    const nestPage = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
     await ui.post({ type: 'menu', key: 'new' }, { in: 'buddy-band' })
     const species = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
     await ui.post({ type: 'menu', key: 'hatch:octopus' }, { in: 'buddy-band' })
     await ui.redraw()
     const swap = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    const afterHatch = { buddy: store.buddy, nest: store.nest }
+    now += 5 * 3600000
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
-    await ui.post({ type: 'menu', key: 'hide' }, { in: 'buddy-band' })
-
-    expect(main).toContain('"theme:"')
-    expect(main).toContain('"change"')
-    expect(main).toContain('"buddy"')
-    expect(main).toContain('"hide"')
-    expect(main).not.toContain('"ru"')
-    expect(species).toContain('"octopus"')
-    expect(store.buddy).toMatchObject({ species: 'octopus' })
-    expect(swap).toContain('"species":"octopus"')
-    expect(swap).toContain('"leave":{"species":"cat"')
+    await ui.post({ type: 'menu', key: 'nest' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'pick:1' }, { in: 'buddy-band' })
     await ui.unmount()
-    now += 2000
-    const hidden = await $.ui.mount(BAND)
-    expect(await hidden.find({ key: 'buddy-band' })).toBeUndefined()
-    await hidden.unmount()
+
+    expect(main).toContain('"buddies"')
+    expect(nestPage).toContain('"Mochi"')
+    expect(nestPage).toContain('"lv3"')
+    expect(nestPage).toContain('"egg"')
+    expect(species).toContain('"octopus"')
+    expect(afterHatch.buddy).toMatchObject({ species: 'octopus', xp: 0 })
+    expect(afterHatch.nest).toMatchObject([{ name: 'Mochi', xp: 42 }])
+    expect(swap).toContain('"leave":{"species":"cat"')
+    expect(store.buddy).toMatchObject({ name: 'Mochi', xp: 42, belly: { value: 70, at: now }, affection: { value: 80, at: now } })
+    expect(store.nest).toMatchObject([{ species: 'octopus' }])
+})
+
+test('if the buddy cannot be read, the last one from the nest comes back instead of a new egg', async ($, on) => {
+    stubEngine(on)
+    const kept = { ...NOODLE, hatchedAt: 7, xp: 90 }
+    const store: Record<string, unknown> = { nest: [{ ...NOODLE, hatchedAt: 3, name: 'Old' }, kept] }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+    expect(store.buddy).toMatchObject({ hatchedAt: 7, xp: 90 })
+    expect(store.nest).toMatchObject([{ name: 'Old' }])
+})
+
+test('the nest holds twelve buddies, then it asks to pick one instead of hatching', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: NOODLE, nest: Array.from({ length: 11 }, (_, i) => ({ ...NOODLE, hatchedAt: i + 10 })) }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const result = await $.command.run({ command: 'buddy', args: 'hatch cat' } as Parameters<typeof $.command.run>[0])
+
+    expect(result.text).toBe('Your nest is full: 12 buddies')
+    expect(store.buddy).toBe(NOODLE)
 })
 
 test('a right click anywhere on the band opens the menu, a second one closes it', async ($, on) => {

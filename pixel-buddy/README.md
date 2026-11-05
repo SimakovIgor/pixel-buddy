@@ -62,7 +62,9 @@ Eight species. A buddy hatches with a name, a rarity and five stats, all rolled 
   on top it teases you, otherwise it cheers you on
 - **Shiny:** 1 egg in 100 hatches a buddy in other colors that twinkles now and then
 
-One buddy per machine, shared by all your sessions. `change buddy` in the menu hatches a new one.
+One buddy at a time, shared by all your sessions. Every buddy you hatch stays in your nest with its level, belly and
+love: `buddies` in the menu brings any of them back or hatches a new egg, up to 12. Nobody is lost, and a buddy resting
+in the nest does not get hungry or lonely.
 
 ## What it does
 
@@ -101,7 +103,7 @@ One buddy per machine, shared by all your sessions. `change buddy` in the menu h
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
 | click a snack | it hurries over and eats it with hearts |
-| right click | the menu with a summary line: level, belly, love and mood. `card` opens its card in a frame above the prompt and closes it on the next press, `feed` gives it a berry, `change buddy` hatches a new one of the species you pick, `theme`, `hide` |
+| right click | the menu with a summary line: level, belly, love and mood. `card` opens its card in a frame above the prompt and closes it on the next press, `feed` gives it a berry, `buddies` opens your nest to bring one back or hatch a new egg, `theme`, `hide` |
 
 ## Commands
 
@@ -120,8 +122,8 @@ Only for what a click cannot do:
 
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
-- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy with its name, stats, xp,
-  belly and love, the theme and the hat switch. Session entries an older version kept are removed when a session starts
+- **What it keeps, on this machine only,** in the plugin store of Claude Code: the buddy and the ones in your nest
+  with their names, stats, xp, belly and love, the theme and the hat switch. Session entries an older version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
