@@ -1,7 +1,10 @@
 # Pixel Buddy
 
-A pixel pet for Claude Code. It lives in the footer next to your status line, hatches from an egg, reacts to what
-Claude does, shows tricks while you wait, naps when you are away and plays with you on clicks.
+**Ship code, feed your buddy.**
+
+A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, grows a
+level at a time, shows its mood, does tricks while Claude thinks, naps when you are away and plays with you on clicks.
+Every buddy you hatch stays in your nest, and nothing leaves your machine.
 
 ![Pixel Buddy in the Claude Code footer: the spinner stays right above the prompt, the ninja slices fruit next to the status line](pixel-buddy/docs/footer.png)
 

@@ -1026,7 +1026,6 @@ const drawAura = (c: Canvas, v: View, x0: number): void => {
 }
 
 const drawMinis = (c: Canvas, v: View, x0: number): void => {
-    const species = speciesOf(v.species)
     const palette = paletteOf(v)
     const color = palette.b ?? WHITE
     const eye = palette.e ?? 0

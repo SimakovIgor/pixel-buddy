@@ -1,7 +1,9 @@
 # Pixel Buddy
 
-A pixel pet for Claude Code. It lives in the footer next to your status line, hatches from an egg, reacts to what
-Claude does, shows tricks while you wait, naps when you are away and plays with you on clicks.
+**Ship code, feed your buddy.**
+
+A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, grows a
+level at a time, shows its mood, does tricks while Claude thinks, naps when you are away and plays with you on clicks.
 
 ![Pixel Buddy in the Claude Code footer: the spinner stays right above the prompt, the ninja slices fruit next to the status line](docs/footer.png)
 
@@ -62,24 +64,36 @@ Eight species. A buddy hatches with a name, a rarity and five stats, all rolled 
   on top it teases you, otherwise it cheers you on
 - **Shiny:** 1 egg in 100 hatches a buddy in other colors that twinkles now and then
 
-Every buddy you hatch stays in your nest with its level, belly and love: `buddies` in the menu brings any of them back
-or hatches a new egg, up to 12. Nobody is lost, and a buddy resting in the nest does not get hungry or lonely.
+## Feed it with your work
 
-Each window keeps its own buddy: pick one in a window and it stays there, also after `claude --resume`. Two windows can
-show two different buddies, so you tell them apart at a glance. A new window shows your last pick.
+- **Snacks come from what you do.** Each answer from Claude drops a cookie into the strip, green tests drop a fish, a
+  commit or a finished plan drops a cake. The buddy walks over and eats it. Click a snack to make it hurry
+- **Snacks give xp, xp gives levels.** Each level needs ten xp more than the last one. A new level gets a little party
+- **It never starves.** The belly empties slowly, over a night. A hungry buddy asks for a snack now and then, a berry
+  from the menu fills it up, and nothing bad happens to it if you forget
 
-## What it does
+## Its mood
+
+The card tells the mood and what helps:
+
+| Mood | When | What it does | What helps |
+| --- | --- | --- | --- |
+| joyful ♪ | green tests, a commit or a new level in the last half hour | hums, hops, does tricks twice as often | keep shipping |
+| content · | fed, petted, rested | its usual self | nothing |
+| tired zz | two hours of work without a ten minute break | walks slower, half shuts its eyes, suggests a stretch | a short break |
+| lonely ? | nobody pets it for a day | asks for a click | pet it, play ball |
+| hungry ~ | the belly is low | asks for a snack | a berry from the menu |
+
+## Your nest
+
+Every buddy you hatch stays in your nest with its level, belly and love, up to 12. A new egg never replaces anyone,
+and a buddy resting in the nest does not get hungry or lonely. Each window keeps its own buddy, also after
+`claude --resume`, so two windows can show two different buddies. A new window shows your last pick.
+
+## What else it does
 
 ![It naps under a sakura, purrs when petted, lands on a rocket flame, slides on its belly, juggles and blows bubbles](docs/moments.png)
 
-- **Eats what your work drops.** Each answer from Claude drops a cookie into the strip, green tests drop a fish, a
-  commit or a finished plan drops a cake. The buddy walks over and eats it: snacks give it xp, and xp gives it levels.
-  Its card shows the level and how full its belly is
-- **Never starves.** The belly empties slowly, over a night. A hungry buddy asks for a snack now and then, and a berry
-  from the menu fills it up. Nothing bad happens to it if you forget
-- **Has a mood.** Joyful after green tests, a commit or a new level: it hums and does tricks more often. Tired after two
-  hours of work without a break: it walks slower, half shuts its eyes and suggests a stretch. Lonely when nobody pets it
-  for a day, hungry without snacks. One click, one berry or one short break fixes each of them, and the card says which
 - **Stays out of the way.** It sits at the right end of the footer, so Claude's spinner stays right above the prompt and
   the footer keeps its height
 - **Comes and goes in its own way.** The duck hatches from an egg and flies off, the penguin slides in and out on its
@@ -105,7 +119,19 @@ show two different buddies, so you tell them apart at a glance. A new window sho
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
 | click a snack | it hurries over and eats it with hearts |
-| right click | the menu with a summary line: level, belly, love and mood. `card` opens its card in a frame above the prompt (`hide card` closes it, or it goes in a minute; if the panel above the prompt is folded, click its line to unfold), `feed` gives it a berry, `buddies` opens your nest to bring one back or hatch a new egg, `theme`, `hide` |
+| right click | the menu |
+
+## The menu
+
+A right click opens it. Its first line sums the buddy up: name, level, belly, love and mood.
+
+| Item | What it does |
+| --- | --- |
+| `card` | opens its card in a frame above the prompt: portrait, mood, level, belly and love. `hide card` closes it, or it goes away in a minute |
+| `feed` | gives it a berry. A full buddy says no thanks |
+| `buddies` | opens your nest: bring any buddy back to this window or hatch a new egg |
+| `theme` | calendar, winter, halloween or off |
+| `hide` | hides it in this window. `/buddy on` brings it back |
 
 ## Commands
 
@@ -125,7 +151,8 @@ Only for what a click cannot do:
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
 - **What it keeps, on this machine only,** in the plugin store of Claude Code: your buddies with their names, stats,
-  xp, belly and love, which buddy each of your last 50 sessions shows, the theme and the hat switch. Session entries an older version kept are removed when a session starts
+  xp, belly and love, which buddy each of your last 50 sessions shows, the theme and the hat switch. Entries an older
+  version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
@@ -138,7 +165,7 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
 
 - `hooks/register.tsx` listens to the session: turns, tool calls, subagents, clicks. Five times a second it decides
   the mood and what to say. It draws the strip in the `SessionMode` render site at the right of the footer and falls
-  back to the band above the prompt where the footer has no room
+  back to the band above the prompt where the footer has no room. The card is drawn in that band too
 - `hooks/band-client.tsx` animates the strip at 20 frames a second: walking, chasing the cursor, catching the ball,
   dragging. A frame that looks like the last one is not redrawn, so an idle buddy costs little
 - `hooks/scene.ts` paints everything with half-block pixels, two pixels per terminal cell
@@ -160,7 +187,10 @@ plugin does not bring the tests along. From the root of a clone:
 - **It sits above the prompt, not in the footer:** the terminal is narrower than 130 columns
 - **Clicks do nothing:** the terminal does not report the mouse to Claude Code
 - **A session opened before the install has no buddy:** run `/reload-plugins` there
-- **Something looks off:** `/buddy debug` shows how it draws and the last error it met
+- **`card` shows nothing:** the panel above the prompt is folded, its `[-]` folds it. Click the line
+  `▸ plugin panel hidden` right above the prompt to unfold it, Claude Code remembers that
+- **Something looks off:** `/buddy debug` shows how it draws, the last click and menu press, the card and the last
+  error it met
 
 ## License
 
