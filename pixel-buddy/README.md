@@ -105,7 +105,7 @@ show two different buddies, so you tell them apart at a glance. A new window sho
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
 | click a snack | it hurries over and eats it with hearts |
-| right click | the menu with a summary line: level, belly, love and mood. `card` opens its card in a frame above the prompt and closes it on the next press, `feed` gives it a berry, `buddies` opens your nest to bring one back or hatch a new egg, `theme`, `hide` |
+| right click | the menu with a summary line: level, belly, love and mood. `card` opens its card in a frame above the prompt (`hide card` closes it, or it goes in a minute; if the panel above the prompt is folded, click its line to unfold), `feed` gives it a berry, `buddies` opens your nest to bring one back or hatch a new egg, `theme`, `hide` |
 
 ## Commands
 

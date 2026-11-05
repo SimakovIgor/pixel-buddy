@@ -143,7 +143,7 @@ const menuOf = (): Menu | null => {
         }
     }
     const items: MenuItem[] = [
-        { key: 'card', label: 'card', isOn: false },
+        cardAt === null ? { key: 'card', label: 'card', isOn: false } : { key: 'card-close', label: 'hide card', isOn: true },
         { key: 'feed', label: 'feed', isOn: false },
         { key: 'nest', label: 'buddies', isOn: false },
         { key: 'theme', label: `theme: ${theme}`, isOn: theme !== 'auto' && theme !== 'off' },
@@ -367,12 +367,10 @@ const cherish = ($: EngineInterface, amount: number, now: number): void => {
     }
 }
 
-const toggleCard = (now: number): void => {
-    cardAt = cardAt === null ? now : null
+const openCard = (now: number): void => {
+    cardAt = now
     isCardInChat = false
-    if (cardAt !== null) {
-        sayText('card is up ↑ ctrl+x ctrl+a', now)
-    }
+    sayText('my card is up there ↑', now)
 }
 
 const cardInChat = ($: EngineInterface, now: number): void => {
@@ -414,7 +412,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                     <Text>love  {bar(love)} {love}%</Text>
                 </Box>
             </Box>
-            <Text dimColor>this window's buddy · {nest.length + 1} in your nest · card in the menu closes it</Text>
+            <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
         </Box>
     )
 }
@@ -878,7 +876,10 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         menuPage = 'main'
     } else if (key === 'card') {
         menuPage = null
-        toggleCard(now)
+        openCard(now)
+    } else if (key === 'card-close') {
+        menuPage = null
+        cardAt = null
     } else if (key === 'feed') {
         menuPage = null
         feedByHand(now)

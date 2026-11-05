@@ -868,7 +868,7 @@ test('a tired buddy keeps its eyes half shut', () => {
     expect([...paint({ ...idle, vibe: 'tired' })].join(',')).not.toBe([...paint(idle)].join(','))
 })
 
-test('the right click menu starts with a summary line, and card opens one framed card above the prompt, a second press closes it', async ($, on) => {
+test('the right click menu starts with a summary line, card opens one framed card above the prompt, pressing it again keeps it, hide card closes it', async ($, on) => {
     const now = Date.now()
     stubEngine(on, () => now)
     storeOn(on, { buddy: { ...NOODLE, xp: 12, belly: { value: 80, at: now }, affection: { value: 60, at: now } } })
@@ -886,6 +886,12 @@ test('the right click menu starts with a summary line, and card opens one framed
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
     await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
     await above.redraw()
+    const again = await above.find({ key: 'buddy-card' })
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const menuOpen = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'card-close' }, { in: 'buddy-band' })
+    await above.redraw()
     const closed = await above.find({ key: 'buddy-card' })
     await ui.unmount()
     await above.unmount()
@@ -894,6 +900,8 @@ test('the right click menu starts with a summary line, and card opens one framed
     expect(card).toContain('Noodle')
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
+    expect(again).toBeTruthy()
+    expect(menuOpen).toContain('"label":"hide card"')
     expect(closed).toBeUndefined()
 })
 
@@ -956,7 +964,7 @@ test('if nothing draws above the prompt, the card goes to the chat instead, and 
     await ui.advance(400)
     const whenDrawn = lines.length
     await above.unmount()
-    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    now += 100
     await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
     now += 2000
     await ui.advance(400)
