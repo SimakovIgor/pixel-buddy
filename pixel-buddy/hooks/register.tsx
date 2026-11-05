@@ -367,10 +367,11 @@ const cherish = ($: EngineInterface, amount: number, now: number): void => {
     }
 }
 
-const openCard = (now: number): void => {
+const openCard = ($: EngineInterface, now: number): void => {
     cardAt = now
     isCardInChat = false
     sayText('my card is up there ↑', now)
+    $.ui.toast('Card is above the prompt. Folded? Click "plugin panel hidden" to unfold')
 }
 
 const cardInChat = ($: EngineInterface, now: number): void => {
@@ -407,9 +408,21 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                     <Text color={color} weight="bold">{buddy.name}{buddy.isShiny === true ? ' ✦' : ''}</Text>
                     <Text>{species.name} · {stars} {rarity.label}</Text>
                     <Text>{VIBE_MARKS[feeling.vibe]} {feeling.vibe}: {feeling.why}</Text>
-                    <Text>level {level} {meter(into, need)} {into}/{need} xp</Text>
-                    <Text>belly {bar(belly)} {belly}%</Text>
-                    <Text>love  {bar(love)} {love}%</Text>
+                    <Box flexDirection="row">
+                        <Text>level {level} </Text>
+                        <Text color={color}>{meter(into, need)}</Text>
+                        <Text> {into}/{need} xp</Text>
+                    </Box>
+                    <Box flexDirection="row">
+                        <Text>belly </Text>
+                        <Text color="#ffb35c">{bar(belly)}</Text>
+                        <Text> {belly}%</Text>
+                    </Box>
+                    <Box flexDirection="row">
+                        <Text>love  </Text>
+                        <Text color="#ff7aa8">{bar(love)}</Text>
+                        <Text> {love}%</Text>
+                    </Box>
                 </Box>
             </Box>
             <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
@@ -876,7 +889,7 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         menuPage = 'main'
     } else if (key === 'card') {
         menuPage = null
-        openCard(now)
+        openCard($, now)
     } else if (key === 'card-close') {
         menuPage = null
         cardAt = null

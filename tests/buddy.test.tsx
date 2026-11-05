@@ -871,6 +871,12 @@ test('a tired buddy keeps its eyes half shut', () => {
 test('the right click menu starts with a summary line, card opens one framed card above the prompt, pressing it again keeps it, hide card closes it', async ($, on) => {
     const now = Date.now()
     stubEngine(on, () => now)
+    const toasts: string[] = []
+    on('ui.toast', (_, e) => {
+        toasts.push((e as { text: string }).text)
+
+        return { value: undefined }
+    })
     storeOn(on, { buddy: { ...NOODLE, xp: 12, belly: { value: 80, at: now }, affection: { value: 60, at: now } } })
     on('ui.invalidate', () => ({ value: undefined }))
 
@@ -900,6 +906,7 @@ test('the right click menu starts with a summary line, card opens one framed car
     expect(card).toContain('Noodle')
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
+    expect(toasts[0]).toBe('Card is above the prompt. Folded? Click "plugin panel hidden" to unfold')
     expect(again).toBeTruthy()
     expect(menuOpen).toContain('"label":"hide card"')
     expect(closed).toBeUndefined()
