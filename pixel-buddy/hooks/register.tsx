@@ -2,11 +2,11 @@ import type { EngineInterface, Register, RenderElement, ResolveInput, Timer } fr
 
 import type { BandProps } from './band-client'
 
-import { FULL, SNACKS, affectionOf, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, peakOf, vibeOf } from './buddy'
+import { FULL, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, vibeOf } from './buddy'
 import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
-import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf } from './scene'
+import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, encode, portraitOf } from './scene'
 import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
@@ -35,6 +35,7 @@ const HUNGRY_NAG_MS = 20 * 60000
 const TIRED_NAG_MS = 30 * 60000
 const LONELY_NAG_MS = 45 * 60000
 const BREAK_MS = 10 * 60000
+const CARD_MS = 60000
 const NOMS = ['nom!', 'yum!', 'crunch!', 'mmm!']
 
 const MOOD_MS: Partial<Record<Mood, number>> = { shock: 1600, dizzy: 3200, happy: 2600, love: 2600 }
@@ -95,6 +96,7 @@ let lonelyNagAt = 0
 let activeSince = 0
 let lastActiveAt = 0
 let joy: { what: string; at: number } | null = null
+let cardAt: number | null = null
 
 const ALIASES: Record<string, string> = {
     rename: 'name',
@@ -283,15 +285,42 @@ const cherish = ($: EngineInterface, amount: number, now: number): void => {
     }
 }
 
-const CARD_LINES = 7
+const toggleCard = (now: number): void => {
+    cardAt = cardAt === null ? now : null
+}
 
-const showCard = ($: EngineInterface, now: number): void => {
-    if (buddy === null) {
-        return
+const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: number): RenderElement | null => {
+    if (buddy === null || cardAt === null) {
+        return null
     }
-    const lines = cardOf(buddy, now, feelingOf(now)).split('\n').slice(0, CARD_LINES).filter(line => line !== '')
-    lines.forEach(line => $.ui.log(line))
-    $.ui.log('stats and personality: /buddy')
+    const { Box, Text } = $.ui.resolve(e)
+    const rarity = rarityOf(buddy.rarity)
+    const color = `#${rarity.color.toString(16).padStart(6, '0')}`
+    const species = speciesOf(buddy.species)
+    const feeling = feelingOf(now)
+    const { level, into, need } = levelOf(buddy.xp ?? 0)
+    const belly = Math.round(fullnessOf(buddy, now))
+    const love = Math.round(affectionOf(buddy, now))
+    const stars = `${'★'.repeat(rarity.stars)}${'☆'.repeat(5 - rarity.stars)}`
+    const portrait = encode(portraitOf(buddy.species, buddy.rarity, buddy.isShiny === true, seasonOf(now), now))
+    const picture = e.surface === 'terminal' ? $.ui.resolve(e).Raster({ key: 'card-portrait', columns: PORTRAIT_COLS, rows: PORTRAIT_ROWS, cells: portrait }) : null
+
+    return (
+        <Box key="buddy-card" flexDirection="column" borderStyle="round" borderColor={color} paddingX={1} width={Math.min(width, 72)}>
+            <Box flexDirection="row" columnGap={2}>
+                {picture}
+                <Box flexDirection="column">
+                    <Text color={color} weight="bold">{buddy.name}{buddy.isShiny === true ? ' ✦' : ''}</Text>
+                    <Text>{species.name} · {stars} {rarity.label}</Text>
+                    <Text>{VIBE_MARKS[feeling.vibe]} {feeling.vibe}: {feeling.why}</Text>
+                    <Text>level {level} {meter(into, need)} {into}/{need} xp</Text>
+                    <Text>belly {bar(belly)} {belly}%</Text>
+                    <Text>love  {bar(love)} {love}%</Text>
+                </Box>
+            </Box>
+            <Text dimColor>card in the menu closes it · /buddy shows stats and personality</Text>
+        </Box>
+    )
 }
 
 const dropSnack = (kind: SnackKind, now: number): void => {
@@ -472,6 +501,10 @@ const frame = async ($: EngineInterface): Promise<void> => {
     if (turnAt !== null && !saidThinking && now - turnAt > LONG_THINK_MS) {
         saidThinking = true
         say('thinking', now)
+    }
+    if (cardAt !== null && now - cardAt > CARD_MS) {
+        cardAt = null
+        $.ui.invalidate('ui.render')
     }
     if (bubble !== null && now - bubble.at > BUBBLE_MS) {
         bubble = null
@@ -683,7 +716,7 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         menuPage = 'main'
     } else if (key === 'card') {
         menuPage = null
-        showCard($, now)
+        toggleCard(now)
     } else if (key === 'feed') {
         menuPage = null
         feedByHand(now)
@@ -774,6 +807,10 @@ export const register: Register = on => {
         const now = await $.clock.now()
         ensureTimer($, now)
         markActive(now)
+        if (cardAt !== null) {
+            cardAt = null
+            $.ui.invalidate('ui.render')
+        }
         if (now - lastSeenAt > SLEEP_AFTER_MS) {
             say('back', now, true)
         }
@@ -961,10 +998,13 @@ export const register: Register = on => {
     on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
         const now = await $.clock.now()
         const isInFooter = e.surface === 'terminal' && (footerAt === 0 ? now - startedAt < FOOTER_WAIT_MS : isFooterFit)
+        const card = isShown(now) && !e.props.hasSurvey ? drawCard($, e, now, e.props.bodyColumns) : null
+        const { Box } = $.ui.resolve(e)
+        const theirs = card === null ? await next(e) : <Box key="buddy-above" flexDirection="column">{card}{await next(e)}</Box>
         if (!isShown(now) || e.props.hasSurvey || isInFooter) {
-            return next(e)
+            return theirs
         }
 
-        return drawBand($, e, await next(e), e.props.bodyColumns, false)
+        return drawBand($, e, theirs, e.props.bodyColumns, false)
     })
 }

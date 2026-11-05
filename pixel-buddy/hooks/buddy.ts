@@ -167,7 +167,7 @@ export const hatch = (random: () => number, now: number, species?: SpeciesId): B
     }
 }
 
-const bar = (value: number): string => {
+export const bar = (value: number): string => {
     const filled = Math.round(value / 10)
 
     return '█'.repeat(filled) + '░'.repeat(10 - filled)
@@ -178,7 +178,7 @@ const dateOf = (at: number): string =>
 
 const ODDS = RARITIES.map(one => `${one.label} ${one.weight}%`).join(' · ')
 
-const meter = (into: number, need: number): string => {
+export const meter = (into: number, need: number): string => {
     const filled = Math.round((into / need) * 10)
 
     return '▰'.repeat(filled) + '▱'.repeat(10 - filled)

@@ -843,29 +843,31 @@ test('a tired buddy keeps its eyes half shut', () => {
     expect([...paint({ ...idle, vibe: 'tired' })].join(',')).not.toBe([...paint(idle)].join(','))
 })
 
-test('the right click menu starts with a summary line, and card puts the full card into the chat as a dim line', async ($, on) => {
+test('the right click menu starts with a summary line, and card opens one framed card above the prompt, a second press closes it', async ($, on) => {
     const now = Date.now()
     stubEngine(on, () => now)
     storeOn(on, { buddy: { ...NOODLE, xp: 12, belly: { value: 80, at: now }, affection: { value: 60, at: now } } })
     on('ui.invalidate', () => ({ value: undefined }))
-    const notices: string[] = []
-    on('ui.log', (_, e) => {
-        notices.push((e as { text: string }).text)
-
-        return { value: undefined }
-    })
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
+    const above = await $.ui.mount(ABOVE)
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
     await ui.redraw()
     const menu = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
     await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    await above.redraw()
+    const card = JSON.stringify(await above.find({ key: 'buddy-card' }) ?? null)
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    await above.redraw()
+    const closed = await above.find({ key: 'buddy-card' })
     await ui.unmount()
+    await above.unmount()
 
     expect(menu).toContain('"header":"Noodle · lv 2 ▰▱▱▱▱ · belly 80% · love 60% · content ·"')
-    expect(notices).toHaveLength(7)
-    expect(notices[0]).toMatch(/Noodle · ninja/)
-    expect(notices[2]).toContain('mood: content')
-    expect(notices.some(line => line.includes('\n'))).toBe(false)
+    expect(card).toContain('Noodle')
+    expect(card).toContain('content: fed, petted, rested')
+    expect(card).toContain('"borderStyle":"round"')
+    expect(closed).toBeUndefined()
 })

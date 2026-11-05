@@ -10,6 +10,8 @@ export const BUBBLE_MS = 7000
 export const HEART_MS = 1600
 export const WIDTH = 64
 export const MIN_COLS = SPRITE_W + 24
+export const PORTRAIT_COLS = SPRITE_W * 2
+export const PORTRAIT_ROWS = ROWS * 2
 
 const NONE = 0xffffffff
 const UPPER = 0x2580
@@ -1412,4 +1414,31 @@ export const paint = (v: View): Uint32Array => {
     drawHearts(c, v, x0)
 
     return toCells(c)
+}
+
+export const portraitOf = (species: SpeciesId, rarity: Rarity, isShiny: boolean, season: Season, t: number): Uint32Array => {
+    const still: View = {
+        t, cols: PORTRAIT_COLS, species, rarity, mood: 'idle', moodAge: 0, pose: { x: 0, isFacingLeft: false, isWalking: false, lookX: 0, lift: 0 },
+        bubble: null, agents: 0, hatchAge: null, hearts: [], rows: PORTRAIT_ROWS, jump: null, action: null, toy: null, spark: null, season,
+        menu: null, nap: null, trail: [], leave: null, food: null, isShiny, vibe: 'content',
+    }
+    const c = canvasOf(PORTRAIT_COLS, PORTRAIT_ROWS)
+    drawSprite(c, still, 0, 2)
+    drawHat(c, still, 0, 2)
+
+    return toCells(c)
+}
+
+export const encode = (cells: Uint32Array): string => {
+    const bytes = new Uint8Array(cells.buffer, cells.byteOffset, cells.byteLength)
+    const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64
+    if (native !== undefined) {
+        return native.call(bytes)
+    }
+    let binary = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    }
+
+    return btoa(binary)
 }
