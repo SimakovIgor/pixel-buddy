@@ -1,8 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cardOf } from './buddy'
 import { isTestRun } from './register'
-import { noteLinesOf, paint, rowsOf } from './scene'
+import { paint } from './scene'
 import { SPECIES } from './species'
 import type { View } from './scene'
 
@@ -32,7 +31,6 @@ const stubEngine = (on: On, clock = () => Date.now(), hasFrames = false) => {
     on('clock.now', () => ({ value: clock() }))
     on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
     on('command.register', () => ({ value: { command: 'buddy' } }))
-    on('ui.open', () => ({ value: { isPlaced: true } }))
     on('ui.render', ($, e) => {
         const { Text } = $.ui.resolve(e)
 
@@ -60,17 +58,25 @@ test('a new session hatches a buddy above the prompt and keeps it', async ($, on
     await ui.unmount()
 })
 
-test('/buddy shows the card of the stored buddy', async ($, on) => {
+test('/buddy prints the card of the stored buddy in the chat and opens no side panel', async ($, on) => {
     stubEngine(on)
     on('store.get', () => ({
         value: { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 },
     }))
+
+    let panes = 0
+    on('ui.open', () => {
+        panes += 1
+
+        return { value: { isPlaced: true } }
+    })
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const result = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
 
     expect(result.text).toContain('Mochi · cat · ★★★☆☆ rare')
     expect(result.text).toContain('DEBUGGING █████████░ 90')
+    expect(panes).toBe(0)
 })
 
 test('a click on the buddy pets him and he answers in a bubble', async ($, on) => {
@@ -104,26 +110,6 @@ test('/buddy off plays the way out, then the buddy is gone', async ($, on) => {
     expect(await gone.find({ type: 'Raster' })).toBeFalsy()
     expect(await gone.find({ type: 'Client' })).toBeFalsy()
     await gone.unmount()
-})
-
-test('/buddy opens a card pane with the portrait and stats', async ($, on) => {
-    stubEngine(on)
-    on('store.get', () => ({ value: { name: 'Mochi', species: 'robot', rarity: 'legendary', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    await $.command.run({ command: 'buddy', args: 'card' } as Parameters<typeof $.command.run>[0])
-    const ui = await $.ui.mount({
-        plugin: 'pixel-buddy',
-        component: 'Pane',
-        requestId: 'buddy-card',
-        surface: 'terminal',
-        props: { title: 'Mochi', isFocused: false, bodyColumns: 50, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
-    })
-
-    expect(await ui.find({ type: 'Raster' })).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /Mochi/ }))?.text).toBe('Mochi')
-    expect(await ui.find({ type: 'Text', text: /DEBUGGING/ })).toBeTruthy()
-    await ui.unmount()
 })
 
 test('/buddy hatch with an unknown species lists the species', async ($, on) => {
@@ -280,24 +266,6 @@ test('a right click anywhere on the band opens the menu, a second one closes it'
     await ui.unmount()
 })
 
-test('card in the menu shows the card in a bubble above the buddy and closes the menu', async ($, on) => {
-    stubEngine(on)
-    on('store.get', (_, e) => ({ value: (e as { key: string }).key === 'buddy' ? { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } : undefined }))
-    on('store.set', () => ({ value: undefined }))
-    on('ui.invalidate', () => ({ value: undefined }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const ui = await $.ui.mount(BAND)
-    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
-    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
-    const drawn = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
-
-    expect(drawn).toContain('"Mochi"')
-    expect(drawn).toContain('"rare"')
-    expect(drawn).not.toContain('"theme:"')
-    await ui.unmount()
-})
-
 test('left alone, the buddy lies down under its tree with closed eyes and gets up when you come back', async ($, on) => {
     let now = Date.now() - 10000
     stubEngine(on, () => now)
@@ -324,18 +292,11 @@ test('left alone, the buddy lies down under its tree with closed eyes and gets u
 
 const NOODLE = { name: 'Noodle', species: 'ninja', rarity: 'common', stats: { DEBUGGING: 20, PATIENCE: 23, CHAOS: 89, WISDOM: 13, SNARK: 63 }, hatchedAt: 0 } as const
 
-test('the card in a bubble keeps the stat bars in one column', () => {
-    const lines = noteLinesOf({ text: cardOf(NOODLE) }, 64)
-    const barStarts = lines.filter(line => /[█░]/.test(line)).map(line => line.search(/[█░]/))
-
-    expect(barStarts).toEqual([10, 10, 10, 10, 10])
-})
-
 test('a bubble said on waking up is drawn over the fading tree, its frame whole', () => {
     const view: View = {
         t: 1000, cols: 64, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
         pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
-        bubble: { text: 'hi there', age: 2000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, note: null,
+        bubble: { text: 'hi there', age: 2000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
         action: null, toy: null, spark: null, season: null, menu: null,
         nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null,
     }
@@ -350,7 +311,7 @@ test('every species does its own trick beside it while it works', () => {
         const view: View = {
             t: 2000, cols: 64, species, rarity: 'common', mood: 'tool', moodAge: 0,
             pose: { x: 34, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
-            bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, note: null,
+            bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
             action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null,
         }
 
@@ -431,7 +392,7 @@ test('in a narrow terminal the footer has no room, so the buddy stays above the 
 const footerView = (overrides: Partial<View>): View => ({
     t: 1000, cols: 49, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
     pose: { x: 38, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
-    bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, note: null, action: null, toy: null,
+    bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, action: null, toy: null,
     spark: null, season: null, menu: null, nap: null, trail: [], leave: null,
     ...overrides,
 })
@@ -569,9 +530,9 @@ test('test runs are told apart from builds, excluded tests and pipes that hide t
     expect(notRuns.filter(isTestRun)).toEqual([])
 })
 
-test('entries older versions kept for each session are removed from the store at start', async ($, on) => {
+test('keys older versions kept, session entries among them, are removed from the store at start', async ($, on) => {
     stubEngine(on)
-    const store: Record<string, unknown> = { buddy: NOODLE, theme: 'off', 'session:old': { status: 'waiting', title: 'Refunds for Jane Doe' } }
+    const store: Record<string, unknown> = { buddy: NOODLE, theme: 'off', lang: 'ru', tropic: true, 'session:old': { status: 'waiting', title: 'Refunds for Jane Doe' } }
     storeOn(on, store)
     on('store.delete', (_, e) => {
         delete store[(e as { key: string }).key]
@@ -623,20 +584,9 @@ test('a buddy stored as the removed bali bird comes back as a penguin, not as a 
     await ui.unmount()
 })
 
-test('a note being typed shows the cursor on the line it types, not on every line still to come', () => {
-    const text = 'DEBUGGING 30\nPATIENCE 91\nCHAOS 30\nWISDOM 19\nSNARK 61'
-    const note = { title: 'Pickle', text, age: 12 * 22 }
-    const view = footerView({ cols: 64, rows: rowsOf(note, 64), note, t: 600 })
-    const cursors = Array.from({ length: view.rows }, (_, row) => rowOf(view, row)).join('\n').split('▍').length - 1
-
-    expect(cursors).toBe(1)
-})
-
-test('a double click keeps the open note on the strip, and a bubble wipes trick glyphs under it', () => {
-    const noted = footerView({ cols: 64, rows: 6, note: { title: 'card', text: 'line one\nline two', age: 99999 }, jump: { age: 600, fromX: 10, toX: 30 } })
+test('a bubble wipes trick glyphs under it', () => {
     const bubbled = footerView({ cols: 64, species: 'axolotl', mood: 'tool', pose: { x: 4, isFacingLeft: false, isWalking: false, lookX: 0, lift: 0 }, action: { kind: 'trick', age: 400 }, bubble: { text: 'hi there', age: 5000 } })
 
-    expect(rowOf(noted, 0)).toContain('╭')
     expect(rowOf(bubbled, 1)).toContain('─┤ hi there │')
 })
 

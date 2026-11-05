@@ -2,18 +2,16 @@ import type { EngineInterface, Register, RenderElement, ResolveInput, Timer } fr
 
 import type { BandProps } from './band-client'
 
-import { STAT_NAMES, cardOf, hatch, introOf, peakOf, rarityOf } from './buddy'
+import { cardOf, hatch, introOf, peakOf } from './buddy'
 import type { Buddy } from './buddy'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
-import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, PORTRAIT_COLS, PORTRAIT_ROWS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, encode, maxXOf, noteTtlOf, paintPortrait, rowsOf } from './scene'
-import type { ActionKind, Menu, MenuItem, Mood, Pose, Season, View } from './scene'
+import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf } from './scene'
+import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
 const CLIENT_KEY = 'buddy-band'
-const PORTRAIT_KEY = 'portrait'
-const CARD = 'buddy-card'
 const STORE_KEY = 'buddy'
 const HAT_KEY = 'hat'
 const THEME_KEY = 'theme'
@@ -21,23 +19,19 @@ const THEMES = ['auto', 'winter', 'halloween', 'off'] as const
 
 type Theme = (typeof THEMES)[number]
 const SESSION_PREFIX = 'session:'
-const SYNC_EVERY_FRAMES = 60
+const SYNC_EVERY_FRAMES = 15
+const AGENTS_EVERY_FRAMES = 3
 const COMMAND = 'buddy'
-const FRAME_MS = 50
-const BLIT_WAIT_MS = 150
-const BLIT_LATE = 'blit did not answer in 150 ms'
+const FRAME_MS = 200
 const CHATTER_GAP_MS = 20000
 const SLEEP_AFTER_MS = 180000
 const FOOTER_RESERVE = 96
 const FOOTER_WAIT_MS = 1500
 const MARATHON_MS = 90000
 const LONG_THINK_MS = 60000
-const TYPING_MS = 1500
-const WALK_SPEED = 0.007
 const LOOP_ERRORS = 3
 
 const MOOD_MS: Partial<Record<Mood, number>> = { shock: 1600, dizzy: 3200, happy: 2600, love: 2600 }
-const STAT_COLORS = ['#4aa8ff', '#5fd17a', '#ff7a5c', '#b57bff', '#ffcf3f']
 
 type Beat = { at: number; mood?: Mood; say?: Moment; agents?: number; pet?: boolean }
 
@@ -54,8 +48,6 @@ const DEMO: readonly Beat[] = [
     { at: 25000, mood: 'idle' },
 ]
 
-type Walk = { x: number | null; target: number; isFacingLeft: boolean; nextAt: number }
-type Glance = { x: number; until: number; nextAt: number; hopUntil: number }
 
 let buddy: Buddy | null = null
 let isOff = false
@@ -79,8 +71,6 @@ let hearts: number[] = []
 let demoAt: number | null = null
 let demoStep = 0
 let demoAgents: number | null = null
-let walk: Walk = { x: null, target: 0, isFacingLeft: true, nextAt: 0 }
-let glance: Glance = { x: 0, until: 0, nextAt: 0, hopUntil: 0 }
 let timer: Timer | null = null
 let timerAt = 0
 let lastFrameAt = 0
@@ -88,12 +78,7 @@ let isTicking = false
 let timerGeneration = 0
 let frames = 0
 let cols = WIDTH
-let lastPortrait = ''
-let isCardOpen = false
-let isCardRaster = false
 let jumpAt: number | null = null
-let jumpFrom = 0
-let jumpTo = 0
 let messages = 0
 let theme: Theme = 'auto'
 let menuPage: 'main' | 'species' | null = null
@@ -114,7 +99,6 @@ const menuOf = (): Menu | null => {
         return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }] }
     }
     const items: MenuItem[] = [
-        { key: 'card', label: 'card', isOn: false },
         { key: 'new', label: 'change buddy', isOn: false },
         { key: 'theme', label: `theme: ${theme}`, isOn: theme !== 'auto' && theme !== 'off' },
         { key: 'hide', label: 'hide', isOn: false },
@@ -126,8 +110,10 @@ const menuOf = (): Menu | null => {
 
 let startedAt = 0
 
-const dropSessionEntries = async ($: EngineInterface): Promise<void> => {
-    const keys = (await $.store.keys()).filter(key => key.startsWith(SESSION_PREFIX))
+const LEGACY_KEYS = ['lang', 'tropic']
+
+const dropLegacyKeys = async ($: EngineInterface): Promise<void> => {
+    const keys = (await $.store.keys()).filter(key => key.startsWith(SESSION_PREFIX) || LEGACY_KEYS.includes(key))
     await Promise.all(keys.map(key => $.store.delete(key)))
 }
 
@@ -179,7 +165,6 @@ const readTheme = async ($: EngineInterface): Promise<Theme> => {
     return (await $.store.get(HAT_KEY)) === 'on' ? 'winter' : 'auto'
 }
 let lastMessage = ''
-let note: { title: string; text: string; at: number } | null = null
 let action: { kind: ActionKind; at: number } | null = null
 let nextTrickAt = 0
 let isClientMode = false
@@ -187,7 +172,6 @@ let footerAt = 0
 let isFooterFit = false
 let isAboveChecked = false
 let lastPropsKey = ''
-const denied = new Set<string>()
 let lastDeny = ''
 
 const random = (): number => {
@@ -256,7 +240,7 @@ const stepAction = (now: number, current: Mood): void => {
     if (action !== null && now - action.at > span) {
         action = null
     }
-    if (action === null && buddy !== null && isFreeFor(current) && note === null && now > nextTrickAt) {
+    if (action === null && buddy !== null && isFreeFor(current) && now > nextTrickAt) {
         if (nextTrickAt !== 0) {
             action = { kind: isNinja() ? (random() < 0.6 ? 'fruit' : 'swing') : 'trick', at: now }
         }
@@ -298,87 +282,6 @@ const runDemo = (now: number): void => {
     }
 }
 
-const isRestless = (current: Mood): boolean => current === 'idle'
-
-const stepWalk = (now: number, elapsed: number, current: Mood): void => {
-    const home = maxXOf(cols)
-    const x = walk.x ?? home
-    if (current === 'think' || current === 'tool') {
-        walk.target = home
-    } else if (!isRestless(current)) {
-        walk.target = x
-    } else if (now > walk.nextAt && Math.abs(walk.target - x) < 0.5 && now - typingAt > TYPING_MS) {
-        walk.target = Math.round(random() * home)
-        walk.nextAt = now + 7000 + random() * 9000
-    }
-    const gap = walk.target - x
-    const move = Math.sign(gap) * Math.min(Math.abs(gap), elapsed * WALK_SPEED)
-    if (Math.abs(gap) >= 0.5) {
-        walk.isFacingLeft = gap < 0
-    }
-    if (now - typingAt < TYPING_MS) {
-        walk.isFacingLeft = true
-    }
-    walk.x = Math.min(home, x + move)
-}
-
-const stepGlance = (now: number): void => {
-    if (now < glance.nextAt) {
-        return
-    }
-    glance = {
-        x: Math.round(random() * 2) - 1,
-        until: now + 1200,
-        nextAt: now + 4000 + random() * 5000,
-        hopUntil: random() < 0.25 ? now + 200 : 0,
-    }
-}
-
-const poseOf = (now: number): Pose => {
-    const x = walk.x ?? maxXOf(cols)
-    const isTyping = now - typingAt < TYPING_MS
-    const isGlancing = now < glance.until
-
-    return {
-        x,
-        isFacingLeft: walk.isFacingLeft,
-        isWalking: Math.abs(walk.target - x) >= 0.5,
-        lookX: isTyping ? -1 : isGlancing ? glance.x : 0,
-        lift: now < glance.hopUntil ? 1 : 0,
-    }
-}
-
-const viewOf = (now: number): View | null => {
-    if (buddy === null) {
-        return null
-    }
-
-    return {
-        t: now,
-        cols,
-        species: buddy.species,
-        rarity: buddy.rarity,
-        mood: demoAt === null ? currentMood(now) : mood,
-        moodAge: now - moodAt,
-        pose: poseOf(now),
-        bubble: bubble === null ? null : { text: bubble.text, age: now - bubble.at },
-        agents: demoAgents ?? agents,
-        hatchAge: hatchAt === null ? null : now - hatchAt,
-        leave: leave === null ? null : { species: leave.species, age: now - leave.at },
-        hearts: hearts.map(at => now - at),
-        rows: rowsOf(note, cols, menuOf()),
-        jump: jumpAt === null ? null : { age: now - jumpAt, fromX: jumpFrom, toX: jumpTo },
-        note: note === null ? null : { title: note.title, text: note.text, age: now - note.at },
-        action: action === null ? null : { kind: action.kind, age: now - action.at },
-        toy: null,
-        spark: null,
-        season: seasonOf(now),
-        menu: menuOf(),
-        nap: null,
-        trail: [],
-    }
-}
-
 const bandPropsOf = (now: number): BandProps | null => {
     if (buddy === null) {
         return null
@@ -386,7 +289,7 @@ const bandPropsOf = (now: number): BandProps | null => {
 
     return {
         cols,
-        rows: rowsOf(note, cols, menuOf()),
+        rows: rowsOf(cols, menuOf()),
         species: buddy.species,
         rarity: buddy.rarity,
         mood: demoAt === null ? currentMood(now) : mood,
@@ -399,7 +302,6 @@ const bandPropsOf = (now: number): BandProps | null => {
         hatchAt,
         leave,
         jumpAt,
-        note,
         action,
         season: seasonOf(now),
         menu: menuOf(),
@@ -410,11 +312,7 @@ const startJump = (now: number): boolean => {
     if (!isClientMode) {
         return false
     }
-    const from = Math.round(walk.x ?? maxXOf(cols))
-    jumpFrom = from
-    jumpTo = Math.max(0, Math.min(maxXOf(cols), from > cols / 2 ? from - 14 : from + 14))
     jumpAt = now
-    walk.target = from
 
     return true
 }
@@ -424,8 +322,6 @@ const landJump = (now: number): void => {
         return
     }
     jumpAt = null
-    walk.x = jumpTo
-    walk.target = jumpTo
     setMood('happy', now)
     sayText('wheee!', now)
 }
@@ -435,29 +331,8 @@ const refreshAgents = async ($: EngineInterface): Promise<void> => {
     agents = list.filter(agent => agent.status === 'running').length
 }
 
-const blitOrLate = async ($: EngineInterface, site: string, key: string, cells: string): Promise<string | undefined> => {
-    const late = $.clock.sleep(BLIT_WAIT_MS).then(() => BLIT_LATE)
-    const painted = $.ui.blit({ requestId: site, key, cells }).then(result => result.deny)
-
-    return Promise.race([painted, late])
-}
-
-const show = async ($: EngineInterface, site: string, key: string, cells: string): Promise<boolean> => {
-    if (denied.has(site)) {
-        return true
-    }
-    const deny = await blitOrLate($, site, key, cells)
-    if (deny !== undefined && deny !== BLIT_LATE) {
-        denied.add(site)
-    }
-    lastDeny = deny ?? lastDeny
-
-    return deny !== undefined
-}
-
 const frame = async ($: EngineInterface): Promise<void> => {
     const now = await $.clock.now()
-    const elapsed = Math.min(200, now - (lastFrameAt || now))
     lastFrameAt = now
     frames += 1
     runDemo(now)
@@ -482,18 +357,14 @@ const frame = async ($: EngineInterface): Promise<void> => {
     }
     hearts = hearts.filter(at => now - at < HEART_MS)
     landJump(now)
-    if (note !== null && now - note.at > noteTtlOf(note.text)) {
-        note = null
-    }
     stepAction(now, demoAt === null ? currentMood(now) : mood)
-    if (frames % 10 === 0) {
+    if (frames % AGENTS_EVERY_FRAMES === 0) {
         await refreshAgents($)
     }
     if (frames % SYNC_EVERY_FRAMES === 0) {
         await syncShared($, now)
     }
-    const view = viewOf(now)
-    if (view === null || !isShown(now)) {
+    if (buddy === null || !isShown(now)) {
         return
     }
     if (footerAt === 0 && !isAboveChecked && now - startedAt > FOOTER_WAIT_MS) {
@@ -506,22 +377,6 @@ const frame = async ($: EngineInterface): Promise<void> => {
             lastPropsKey = key
             $.ui.invalidate('ui.render')
         }
-    }
-    if (jumpAt === null) {
-        stepWalk(now, elapsed, view.mood)
-        stepGlance(now)
-    }
-    const fresh = { ...view, pose: poseOf(now) }
-    let needsRedraw = false
-    if (isCardOpen && isCardRaster) {
-        const portrait = encode(paintPortrait(fresh))
-        if (portrait !== lastPortrait) {
-            lastPortrait = portrait
-            needsRedraw = (await show($, CARD, PORTRAIT_KEY, portrait)) || needsRedraw
-        }
-    }
-    if (needsRedraw) {
-        $.ui.invalidate('ui.render')
     }
 }
 
@@ -589,10 +444,10 @@ const help = (): string => [
     '  double click      jump',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu: card, change buddy, theme (calendar, winter, halloween, off), hide',
+    '  right click       menu: change buddy, theme (calendar, winter, halloween, off), hide',
     '',
     'Commands, for what a click cannot do:',
-    '  /buddy               its card: portrait, stats, personality',
+    '  /buddy               its card: rarity, stats, personality',
     '  /buddy name <name>   rename it',
     '  /buddy on            bring it back in this session after hide',
     '  /buddy help          this list',
@@ -610,10 +465,6 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
     const current = buddy as Buddy
     if (arg === '' || arg === 'card') {
-        await $.ui.open({ id: CARD, title: current.name })
-        isCardOpen = true
-        lastPortrait = ''
-
         return `${cardOf(current)}\n\nMenu: right click on the strip\n/buddy name <new name> · /buddy on · /buddy help`
     }
     if (arg === 'pet') {
@@ -704,10 +555,6 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     } else if (key === 'hide') {
         menuPage = null
         await perform($, now, 'off', [])
-    } else if (key === 'card' && buddy !== null) {
-        menuPage = null
-        const [title = '', ...lines] = cardOf(buddy).split('\n')
-        note = { title, text: lines.filter(line => line !== '').join('\n'), at: now }
     } else {
         menuPage = null
     }
@@ -756,7 +603,7 @@ export const register: Register = on => {
         await $.command.register({ name: COMMAND, description: 'Your pixel buddy. Most things are clicks: right click it for the menu', argumentHint: 'help · name <new name> · on' })
         await loadBuddy($, now)
         startedAt = now
-        await dropSessionEntries($)
+        await dropLegacyKeys($)
         ensureTimer($, now)
 
         return next(e)
@@ -891,9 +738,7 @@ export const register: Register = on => {
         messages += 1
         lastMessage = `${kind ?? 'unknown'} ${new Date(now).toLocaleTimeString()}`
         lastSeenAt = now
-        if (kind === 'pet' && note !== null) {
-            note = null
-        } else if (kind === 'pet') {
+        if (kind === 'pet') {
             pet(now)
         }
         if (kind === 'jump') {
@@ -918,55 +763,6 @@ export const register: Register = on => {
         const props = bandPropsOf(now)
 
         return props === null ? {} : { props }
-    })
-
-    on('ui.close', async ($, e, next) => {
-        if (e.id === CARD) {
-            isCardOpen = false
-        }
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
-
-    on('ui.render', { component: 'Pane', requestId: CARD }, async ($, e) => {
-        const { Box, Text } = $.ui.resolve(e)
-        const now = await $.clock.now()
-        const view = viewOf(now)
-        if (buddy === null || view === null) {
-            return <Text dimColor>No buddy yet</Text>
-        }
-        const rarity = rarityOf(buddy.rarity)
-        const color = `#${rarity.color.toString(16).padStart(6, '0')}`
-        const species = speciesOf(buddy.species)
-        const portrait = encode(paintPortrait(view))
-        lastPortrait = portrait
-        isCardRaster = e.surface === 'terminal'
-        const picture = e.surface === 'terminal' ? $.ui.resolve(e).Raster({ key: PORTRAIT_KEY, columns: PORTRAIT_COLS, rows: PORTRAIT_ROWS, cells: portrait }) : null
-        const isWide = e.props.bodyColumns >= PORTRAIT_COLS + 24
-
-        return (
-            <Box flexDirection="column" rowGap={1}>
-                <Box flexDirection={isWide ? 'row' : 'column'} columnGap={2}>
-                    {picture}
-                    <Box flexDirection="column">
-                        <Text color={color} weight="bold">{buddy.name}</Text>
-                        <Text>{species.name}</Text>
-                        <Text color={color}>{'★'.repeat(rarity.stars)}{'☆'.repeat(5 - rarity.stars)} {rarity.label}</Text>
-                        <Text dimColor>hatched {new Date(buddy.hatchedAt).toLocaleDateString('en-US')}</Text>
-                    </Box>
-                </Box>
-                <Box flexDirection="column">
-                    {STAT_NAMES.map((stat, i) => (
-                        <Box flexDirection="row" columnGap={1}>
-                            <Text dimColor>{stat.padEnd(9)}</Text>
-                            <Text color={STAT_COLORS[i] ?? color}>{'█'.repeat(Math.round(buddy!.stats[stat] / 10))}</Text>
-                            <Text dimColor>{'░'.repeat(10 - Math.round(buddy!.stats[stat] / 10))} {buddy!.stats[stat]}</Text>
-                        </Box>
-                    ))}
-                </Box>
-                <Text dimColor>{help()}</Text>
-            </Box>
-        )
     })
 
     on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {

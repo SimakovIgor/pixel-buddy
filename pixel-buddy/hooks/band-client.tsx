@@ -21,7 +21,6 @@ export type BandProps = {
     hatchAt: number | null
     leave: { species: SpeciesId; at: number } | null
     jumpAt: number | null
-    note: { title: string; text: string; at: number } | null
     action: { kind: ActionKind; at: number } | null
     season: Season
     menu: Menu | null
@@ -328,7 +327,6 @@ const viewOf = (s: BandState, p: BandProps, now: number): View => ({
     hearts: p.hearts.map(at => now - at),
     rows: p.rows,
     jump: s.jump === null ? null : { age: now - s.jump.at, fromX: s.jump.fromX, toX: s.jump.toX },
-    note: p.note === null ? null : { title: p.note.title, text: p.note.text, age: now - p.note.at },
     action: p.action === null ? null : { kind: p.action.kind, age: now - p.action.at },
     toy: s.toy === null ? null : { kind: s.toy.kind, ...(toyAt(s, now) ?? { x: s.toy.x, y: 0 }), age: now - s.toy.at },
     spark: s.spark === null ? null : { x: s.spark.x, y: s.spark.y, age: now - s.spark.at },
@@ -379,6 +377,8 @@ const draw = (elements: ClientElements, s: BandState, p: BandProps, now: number)
 
 const advance = (s: BandState, p: BandProps, now: number, post: (data: JsonValue) => void): BandState => catchToy(step(s, p, now), p, now, post)
 
+let shownFrame = ''
+
 const BuddyBand: ClientModule<BandProps, BandState> = (props, surface) => {
     latest = props
     const now = Date.now()
@@ -390,8 +390,13 @@ const BuddyBand: ClientModule<BandProps, BandState> = (props, surface) => {
                 return
             }
             try {
-                live = advance(live, latest, Date.now(), surface.post)
-                surface.setState(live)
+                const now = Date.now()
+                live = advance(live, latest, now, surface.post)
+                const frame = paint(viewOf(live, latest, now)).join(',')
+                if (frame !== shownFrame) {
+                    shownFrame = frame
+                    surface.setState(live)
+                }
             } catch (error) {
                 report(surface.post, 'tick', error)
             }

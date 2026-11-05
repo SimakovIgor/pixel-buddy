@@ -84,7 +84,7 @@ Eight species, five rarities, a name and stats of its own. One buddy per machine
 | double click | its own move: the ninja teleports in smoke, the robot flies over, the duck dives, the penguin slides on its belly, the cat dashes, the ghost fades over, the octopus goes through ink, the axolotl through bubbles |
 | drag it | carry it along the strip, a light trail of fading copies follows it |
 | click an empty spot | throw a ball, it runs to catch it. The ninja parries a shuriken |
-| right click | the menu: `card` with stats and personality, `change buddy`, `theme`, `hide` |
+| right click | the menu: `change buddy`, `theme`, `hide` |
 
 ## Commands
 
@@ -92,7 +92,7 @@ Only for what a click cannot do:
 
 | Command | What it does |
 | --- | --- |
-| `/buddy` | its card: portrait, stats, personality |
+| `/buddy` | its card in the chat: rarity, stats, personality |
 | `/buddy name <name>` | rename it |
 | `/buddy on` | bring it back after `hide`, which hides it in the current session only |
 | `/buddy help` | the list of clicks and commands |

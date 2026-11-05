@@ -8,8 +8,6 @@ export const ROWS = 3
 export const HATCH_MS = 3000
 export const BUBBLE_MS = 7000
 export const HEART_MS = 1600
-export const PORTRAIT_COLS = SPRITE_W * 2
-export const PORTRAIT_ROWS = ROWS * 2
 export const WIDTH = 64
 export const MIN_COLS = SPRITE_W + 24
 
@@ -43,7 +41,6 @@ export type View = {
     hearts: readonly number[]
     rows: number
     jump: Jump | null
-    note: Note | null
     action: Action | null
     toy: Toy | null
     spark: Spark | null
@@ -97,7 +94,6 @@ export type Toy = { kind: 'ball' | 'shuriken'; x: number; y: number; age: number
 export type Spark = { x: number; y: number; age: number }
 
 export type Jump = { age: number; fromX: number; toX: number }
-export type Note = { title: string; text: string; age: number }
 export type ActionKind = 'swing' | 'slice' | 'fruit' | 'trick'
 export type Action = { kind: ActionKind; age: number }
 
@@ -111,8 +107,6 @@ const POOF_AT = 420
 const APPEAR_AT = 900
 const LAND_AT = 1250
 const SMOKE_MS = 520
-const NOTE_TYPE_MS = 22
-const NOTE_MAX_LINES = 8
 
 const RAINBOW = [0xff3b4a, 0xff9a1f, 0xffe23b, 0x3ee06b, 0x3ba7ff, 0x9b5cff]
 const EGG = 0xfff1d6
@@ -374,7 +368,7 @@ const treeAlphaOf = (nap: Nap): number =>
 
 export const isLying = (v: View): boolean => v.mood === 'sleep' && v.nap !== null && v.nap.wokeAge === null && v.jump === null && !v.pose.isWalking
 
-const treeXOf = (v: View, nap: Nap, i: number): number =>
+const treeXOf = (nap: Nap, i: number): number =>
     isTreeLeftOf(nap.x) ? nap.x - TREE_BACK + i : nap.x + SPRITE_W - 1 + TREE_BACK - i
 
 const drawTree = (c: Canvas, v: View): void => {
@@ -385,7 +379,7 @@ const drawTree = (c: Canvas, v: View): void => {
     const tree = treeOf(v)
     cycle(tree.art, Math.floor(v.t / 900)).forEach((line, dy) => [...line].forEach((cell, i) => {
         if (cell !== '.') {
-            dot(c, treeXOf(v, nap, i), dy, scale(tree.colors[cell] ?? WHITE, treeAlphaOf(nap)))
+            dot(c, treeXOf(nap, i), dy, scale(tree.colors[cell] ?? WHITE, treeAlphaOf(nap)))
         }
     }))
 }
@@ -398,7 +392,7 @@ const drawPetals = (c: Canvas, v: View): void => {
         const life = (v.t + k * 1950) % 3900
         const p = life / 3900
         const i = 6 + k * 3 + Math.round(p * 3 + Math.sin(life / 260))
-        dot(c, treeXOf(v, v.nap, i), 2 + p * 3.6, scale(PETAL, treeAlphaOf(v.nap) * (1 - p * 0.4)))
+        dot(c, treeXOf(v.nap, i), 2 + p * 3.6, scale(PETAL, treeAlphaOf(v.nap) * (1 - p * 0.4)))
     }
 }
 
@@ -792,85 +786,10 @@ const drawSlice = (c: Canvas, v: View, x0: number): void => {
     }
 }
 
-const wrapText = (text: string, width: number): string[] => {
-    if (text.includes('\n')) {
-        return text.split('\n').flatMap(part => wrapText(part, width)).slice(0, NOTE_MAX_LINES)
-    }
-    if (text.trim() !== '' && [...text.trimEnd()].length <= width) {
-        return [text.trimEnd()]
-    }
-    const lines: string[] = []
-    let line = ''
-    for (const word of text.replace(/\s+/g, ' ').trim().split(' ')) {
-        if (line === '') {
-            line = word
-        } else if (line.length + 1 + word.length <= width) {
-            line += ` ${word}`
-        } else {
-            lines.push(line)
-            line = word
-        }
-        while (line.length > width) {
-            lines.push(line.slice(0, width))
-            line = line.slice(width)
-        }
-    }
-    if (line !== '') {
-        lines.push(line)
-    }
-
-    return lines.slice(0, NOTE_MAX_LINES)
-}
-
-const noteWidthOf = (cols: number): number => Math.max(20, cols - 2)
-
-export const noteLinesOf = (note: { text: string }, cols: number): string[] => wrapText(note.text, noteWidthOf(cols) - 4)
-
-export const rowsOf = (note: { text: string } | null, cols: number, menu: Menu | null = null): number =>
-    menuRowsOf(menu, cols) + (note === null ? ROWS : ROWS + noteLinesOf(note, cols).length + 2)
-
-export const noteTtlOf = (text: string): number => 9000 + text.length * 60
+export const rowsOf = (cols: number, menu: Menu | null = null): number => menuRowsOf(menu, cols) + ROWS
 
 const writeAbsolute = (c: Canvas, x: number, row: number, text: string, color: number | ((i: number) => number)): void =>
     write(c, x, row - c.base, text, color)
-
-const drawNote = (c: Canvas, v: View, x0: number, accent: number): void => {
-    if (v.note === null) {
-        return
-    }
-    const ttl = noteTtlOf(v.note.text)
-    const alpha = v.note.age > ttl - 600 ? Math.max(0, (ttl - v.note.age) / 600) : 1
-    const top = menuRowsOf(v.menu, c.width)
-    const lines = noteLinesOf(v.note, c.width)
-    const width = noteWidthOf(c.width)
-    const left = 1
-    for (let row = top; row <= top + lines.length + 1; row++) {
-        for (let x = left; x < left + width && x < c.width; x++) {
-            c.pixels[row * 2 * c.width + x] = NONE
-            c.pixels[(row * 2 + 1) * c.width + x] = NONE
-            c.glyphs[row * c.width + x] = 0
-        }
-    }
-    const edge = scale(BUBBLE_EDGE, alpha)
-    const title = ` ${[...v.note.title].slice(0, width - 8).join('')} `
-    writeAbsolute(c, left, top + 0, `╭─${title}${'─'.repeat(Math.max(0, width - 3 - [...title].length))}╮`, i => (i >= 2 && i < 2 + [...title].length ? scale(accent, alpha) : edge))
-    let budget = Math.floor(v.note.age / NOTE_TYPE_MS)
-    lines.forEach((line, i) => {
-        writeAbsolute(c, left, top + 1 + i, '│', edge)
-        writeAbsolute(c, left + width - 1, top + 1 + i, '│', edge)
-        const isTyping = budget >= 0 && budget < [...line].length
-        const shown = [...line].slice(0, Math.max(0, budget)).join('')
-        budget -= [...line].length
-        writeAbsolute(c, left + 2, top + 1 + i, shown, scale(BUBBLE_TEXT, alpha))
-        if (isTyping && Math.floor(v.t / 300) % 2 === 0) {
-            writeAbsolute(c, left + 2 + shown.length, top + 1 + i, '▍', scale(accent, alpha))
-        }
-    })
-    const bottom = 1 + lines.length
-    const tail = Math.max(left + 2, Math.min(left + width - 3, x0 + Math.floor(SPRITE_W / 2)))
-    writeAbsolute(c, left, top + bottom, `╰${'─'.repeat(width - 2)}╯`, edge)
-    writeAbsolute(c, tail, top + bottom, '┬', edge)
-}
 
 const BALL = 0xff5a3c
 const BALL_SHADE = 0xc23a22
@@ -1370,7 +1289,6 @@ export const paint = (v: View): Uint32Array => {
         drawTree(c, v)
     }
     drawMenu(c, v)
-    drawNote(c, v, x0, rarityOf(v.rarity).color)
     if (v.leave !== null && isLeaving && !isJumping) {
         LEAVES[v.leave.species](c, { ...v, species: v.leave.species }, x0, v.leave.age)
     }
@@ -1397,35 +1315,10 @@ export const paint = (v: View): Uint32Array => {
         drawPetals(c, v)
         drawSwing(c, v, x0)
     }
-    if (v.note === null) {
-        drawBubble(c, v, x0)
-    }
+    drawBubble(c, v, x0)
     drawToy(c, v)
     drawSpark(c, v)
     drawHearts(c, v, x0)
 
     return toCells(c)
-}
-
-export const paintPortrait = (v: View): Uint32Array => {
-    const c = canvasOf(PORTRAIT_COLS, PORTRAIT_ROWS)
-    const still = { ...v, jump: null, action: null, pose: { ...v.pose, isWalking: false, lift: 0 } }
-    drawSprite(c, still, 0, 2)
-    drawHat(c, { ...still, mood: 'idle' }, 0, 2)
-
-    return toCells(c)
-}
-
-export const encode = (cells: Uint32Array): string => {
-    const bytes = new Uint8Array(cells.buffer, cells.byteOffset, cells.byteLength)
-    const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64
-    if (native !== undefined) {
-        return native.call(bytes)
-    }
-    let binary = ''
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    }
-
-    return btoa(binary)
 }
