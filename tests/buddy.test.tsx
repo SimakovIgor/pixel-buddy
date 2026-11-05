@@ -897,7 +897,7 @@ test('the right click menu starts with a summary line, card opens one framed car
     expect(card).toContain('Noodle')
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
-    expect(card).toContain('"color":"#4aa8ff"')
+    expect(card).toContain('trophies 🦉 ')
     expect(card).toContain('menu → trophies')
     expect(toasts[0]).toBe('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
     expect(again).toBeTruthy()

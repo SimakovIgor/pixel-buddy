@@ -10,7 +10,7 @@ import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS
 import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
-import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
+import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, emojisOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
 import type { Found, TrophyId } from './trophies'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
@@ -507,11 +507,8 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                 </Box>
             </Box>
             <Box flexDirection="row">
-                <Text>trophies </Text>
-                {TROPHIES.map(one => (found[one.id] === undefined
-                    ? <Text key={one.id} dimColor>·</Text>
-                    : <Text key={one.id} color={hexOf(rarityOf(one.rarity).color)}>◆</Text>))}
-                <Text dimColor> {countOf(found)} of {TROPHIES.length} · menu → trophies</Text>
+                <Text>trophies {countOf(found) === 0 ? '' : `${emojisOf(found)} `}</Text>
+                <Text dimColor>{countOf(found)} of {TROPHIES.length} · menu → trophies</Text>
             </Box>
             <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
         </Box>
