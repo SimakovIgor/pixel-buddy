@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cardOf, fullnessOf, hatch, levelOf } from './buddy'
+import { cardOf, fullnessOf, hatch, levelOf, vibeOf } from './buddy'
 import type { Buddy } from './buddy'
 import { isTestRun } from './register'
 import { paint } from './scene'
@@ -301,7 +301,7 @@ test('a bubble said on waking up is drawn over the fading tree, its frame whole'
         pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
         bubble: { text: 'hi there', age: 2000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
         action: null, toy: null, spark: null, season: null, menu: null,
-        nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null, food: null, isShiny: false,
+        nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null, food: null, isShiny: false, vibe: 'content',
     }
     const cells = paint(view)
     const middleRow = Array.from({ length: 64 }, (_, x) => String.fromCodePoint(cells[(64 + x) * 3] ?? 0x20)).join('')
@@ -315,7 +315,7 @@ test('every species does its own trick beside it while it works', () => {
             t: 2000, cols: 64, species, rarity: 'common', mood: 'tool', moodAge: 0,
             pose: { x: 34, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
             bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
-            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false,
+            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content',
         }
 
         return [...paint(view)].join(',')
@@ -396,7 +396,7 @@ const footerView = (overrides: Partial<View>): View => ({
     t: 1000, cols: 49, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
     pose: { x: 38, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
     bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, action: null, toy: null,
-    spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false,
+    spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content',
     ...overrides,
 })
 
@@ -635,7 +635,7 @@ test('levels need ten xp more each time, and the card shows how far the next one
     ])
     const card = cardOf({ ...NOODLE, xp: 33, belly: { value: 20, at: 0 } } as Buddy, 0)
     expect(card).toContain('level 3   ▰▱▱▱▱▱▱▱▱▱ 3/30 xp, earned from your work')
-    expect(card).toContain('belly ██░░░░░░░░ 20%, hungry: right click → feed')
+    expect(card).toContain('belly     ██░░░░░░░░ 20%, hungry: right click → feed')
 })
 
 test('the belly empties slowly over hours, never below zero, and a new egg starts full', () => {
@@ -751,3 +751,121 @@ test('a shiny buddy wears other colors and twinkles, and its card says so', () =
     expect(cardOf({ ...NOODLE, isShiny: true } as Buddy, 0)).toContain('✦ shiny, 1 in 100')
 })
 
+
+test('the mood says what matters most first: hunger, then tiredness, then loneliness, then joy', () => {
+    const fine = { fullness: 80, affection: 50, workedMs: 0, joy: null }
+
+    expect(vibeOf({ ...fine, fullness: 10, workedMs: 3 * 3600000 })).toEqual({ vibe: 'hungry', why: 'belly 10%, a berry from the menu helps' })
+    expect(vibeOf({ ...fine, workedMs: 2 * 3600000 + 600000, affection: 10 })).toEqual({ vibe: 'tired', why: '2h 10m of work without a break, a short walk helps' })
+    expect(vibeOf({ ...fine, affection: 10, joy: { what: 'a commit', agoMs: 1000 } }).vibe).toBe('lonely')
+    expect(vibeOf({ ...fine, joy: { what: 'green tests', agoMs: 12 * 60000 } })).toEqual({ vibe: 'joyful', why: 'green tests 12 min ago' })
+    expect(vibeOf({ ...fine, joy: { what: 'green tests', agoMs: 31 * 60000 } }).vibe).toBe('content')
+    expect(vibeOf({ ...fine, affection: 90 })).toEqual({ vibe: 'joyful', why: 'well fed and loved' })
+})
+
+test('the card has a little portrait, the mood with its reason and how loved the buddy is', () => {
+    const card = cardOf({ ...NOODLE, species: 'ghost', affection: { value: 40, at: 0 } } as Buddy, 0, { vibe: 'tired', why: '2h 5m of work without a break, a short walk helps' }).split('\n')
+
+    expect(card.slice(0, 3).every(line => /^[ ▀▄█]{10}   /.test(line))).toBe(true)
+    expect(card[2]).toContain('mood: tired zz 2h 5m of work without a break, a short walk helps')
+    expect(card).toContain('love      ████░░░░░░ 40%, grows when you pet it or play ball')
+})
+
+test('petting and playing ball make the buddy feel loved, and the store keeps it', async ($, on) => {
+    const now = Date.now()
+    stubEngine(on, () => now)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, affection: { value: 20, at: now } } }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'pet' }, { in: 'buddy-band' })
+    await ui.post({ type: 'caught', kind: 'ball' }, { in: 'buddy-band' })
+    await ui.unmount()
+
+    expect(store.buddy).toMatchObject({ affection: { value: 33, at: now } })
+})
+
+test('two hours of work without a break make it tired, a break of ten minutes rests it', async ($, on) => {
+    let now = Date.now()
+    stubEngine(on, () => now)
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 90, at: now }, affection: { value: 50, at: now } } })
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', () => ({ text: '' }))
+    const vibe = async (ui: { find: (query: object) => Promise<unknown> }) => /"vibe":"(\w+)"/.exec(JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' })))?.[1]
+    const work = async (minutes: number) => {
+        for (let done = 0; done < minutes; done += 5) {
+            await $.turn.start({ text: 'go', turnId: `t${now}` } as Parameters<typeof $.turn.start>[0])
+            now += 5 * 60000
+            await $.turn.complete({ turnId: `t${now}`, reason: 'aborted' } as unknown as Parameters<typeof $.turn.complete>[0])
+        }
+    }
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await work(115)
+    await ui.redraw()
+    const fresh = await vibe(ui)
+    await work(10)
+    await ui.redraw()
+    const tired = await vibe(ui)
+    now += 12 * 60000
+    await work(5)
+    await ui.redraw()
+    const rested = await vibe(ui)
+    await ui.unmount()
+
+    expect([fresh, tired, rested]).toEqual(['content', 'tired', 'content'])
+})
+
+test('a commit makes it joyful: it hums and does tricks more often', async ($, on) => {
+    const now = Date.now()
+    stubEngine(on, () => now)
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 60, at: now }, affection: { value: 50, at: now } } })
+    on('tool.call', () => ({ result: 'ok', isError: false }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "x"' } as unknown as Parameters<typeof $.tool.call>[0])
+    await ui.redraw()
+    const band = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.unmount()
+    const idle = footerView({ cols: 64, species: 'cat', t: 100 })
+
+    expect(band).toContain('"vibe":"joyful"')
+    expect(rowOf({ ...idle, vibe: 'joyful' }, 0)).toContain('♪')
+    expect(rowOf(idle, 0)).not.toContain('♪')
+})
+
+test('a tired buddy keeps its eyes half shut', () => {
+    const idle = footerView({ cols: 64, species: 'cat', t: 1500 })
+
+    expect([...paint({ ...idle, vibe: 'tired' })].join(',')).not.toBe([...paint(idle)].join(','))
+})
+
+test('the right click menu starts with a summary line, and card puts the full card into the chat as a dim line', async ($, on) => {
+    const now = Date.now()
+    stubEngine(on, () => now)
+    storeOn(on, { buddy: { ...NOODLE, xp: 12, belly: { value: 80, at: now }, affection: { value: 60, at: now } } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    const notices: string[] = []
+    on('ui.log', (_, e) => {
+        notices.push((e as { text: string }).text)
+
+        return { value: undefined }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const menu = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    await ui.unmount()
+
+    expect(menu).toContain('"header":"Noodle · lv 2 ▰▱▱▱▱ · belly 80% · love 60% · content ·"')
+    expect(notices).toHaveLength(7)
+    expect(notices[0]).toMatch(/Noodle · ninja/)
+    expect(notices[2]).toContain('mood: content')
+    expect(notices.some(line => line.includes('\n'))).toBe(false)
+})

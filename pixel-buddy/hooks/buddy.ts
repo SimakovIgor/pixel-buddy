@@ -1,5 +1,5 @@
 import { isSnarky } from './lines'
-import { SPECIES, speciesOf } from './species'
+import { SPECIES, SPRITE_W, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
@@ -18,6 +18,7 @@ export type Buddy = {
     hatchedAt: number
     xp?: number
     belly?: Belly
+    affection?: Belly
     isShiny?: boolean
 }
 
@@ -41,6 +42,54 @@ export const fullnessOf = (buddy: Buddy, now: number): number => {
 
     return Math.max(0, Math.min(100, belly.value - ((now - belly.at) / 3600000) * BELLY_PER_HOUR))
 }
+
+const FRESH_LOVE = 60
+const LOVE_PER_HOUR = 4
+export const LONELY = 30
+export const TIRED_AFTER_MS = 2 * 3600000
+export const JOY_MS = 30 * 60000
+
+export const affectionOf = (buddy: Buddy, now: number): number => {
+    const love = buddy.affection ?? { value: FRESH_LOVE, at: now }
+
+    return Math.max(0, Math.min(100, love.value - ((now - love.at) / 3600000) * LOVE_PER_HOUR))
+}
+
+export type Vibe = 'joyful' | 'content' | 'tired' | 'hungry' | 'lonely'
+
+export type MoodFacts = { fullness: number; affection: number; workedMs: number; joy: { what: string; agoMs: number } | null }
+
+export type Mood = { vibe: Vibe; why: string }
+
+const durationOf = (ms: number): string => {
+    const minutes = Math.round(ms / 60000)
+
+    return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} min`
+}
+
+const agoOf = (ms: number): string => (ms < 90000 ? 'just now' : `${Math.round(ms / 60000)} min ago`)
+
+export const vibeOf = (facts: MoodFacts): Mood => {
+    if (facts.fullness < HUNGRY) {
+        return { vibe: 'hungry', why: `belly ${Math.round(facts.fullness)}%, a berry from the menu helps` }
+    }
+    if (facts.workedMs >= TIRED_AFTER_MS) {
+        return { vibe: 'tired', why: `${durationOf(facts.workedMs)} of work without a break, a short walk helps` }
+    }
+    if (facts.affection < LONELY) {
+        return { vibe: 'lonely', why: 'not petted for a while, a click on it helps' }
+    }
+    if (facts.joy !== null && facts.joy.agoMs < JOY_MS) {
+        return { vibe: 'joyful', why: `${facts.joy.what} ${agoOf(facts.joy.agoMs)}` }
+    }
+    if (facts.fullness >= 70 && facts.affection >= 70) {
+        return { vibe: 'joyful', why: 'well fed and loved' }
+    }
+
+    return { vibe: 'content', why: 'fed, petted, rested' }
+}
+
+export const VIBE_MARKS: Record<Vibe, string> = { joyful: '♪', content: '·', tired: 'zz', hungry: '~', lonely: '?' }
 
 export type Level = { level: number; into: number; need: number }
 
@@ -113,6 +162,7 @@ export const hatch = (random: () => number, now: number, species?: SpeciesId): B
         hatchedAt: now,
         xp: 0,
         belly: { value: 100, at: now },
+        affection: { value: 70, at: now },
         isShiny: random() < SHINY_ODDS,
     }
 }
@@ -134,20 +184,40 @@ const meter = (into: number, need: number): string => {
     return '▰'.repeat(filled) + '▱'.repeat(10 - filled)
 }
 
-export const cardOf = (buddy: Buddy, now: number): string => {
+const portraitOf = (buddy: Buddy): string[] => {
+    const frame = speciesOf(buddy.species).frames[0] ?? []
+    const filled = (row: number, col: number): boolean => {
+        const cell = frame[row]?.[col] ?? '.'
+
+        return cell !== '.' && cell !== 'e'
+    }
+
+    return [0, 2, 4].map(row => Array.from({ length: SPRITE_W }, (_, col) => {
+        const top = filled(row, col)
+        const bottom = filled(row + 1, col)
+
+        return top && bottom ? '█' : top ? '▀' : bottom ? '▄' : ' '
+    }).join(''))
+}
+
+export const cardOf = (buddy: Buddy, now: number, mood: Mood | null = null): string => {
     const rarity = rarityOf(buddy.rarity)
     const species = speciesOf(buddy.species)
     const stars = '★'.repeat(rarity.stars) + '☆'.repeat(5 - rarity.stars)
     const peak = peakOf(buddy)
     const { level, into, need } = levelOf(buddy.xp ?? 0)
     const belly = Math.round(fullnessOf(buddy, now))
+    const love = Math.round(affectionOf(buddy, now))
+    const [top = '', middle = '', bottom = ''] = portraitOf(buddy)
 
     return [
-        `${buddy.name} · ${species.name} · ${stars} ${rarity.label}${buddy.isShiny === true ? ' · ✦ shiny, 1 in 100' : ''}`,
-        `hatched ${dateOf(buddy.hatchedAt)}`,
+        `${top}   ${buddy.name} · ${species.name} · ${stars} ${rarity.label}${buddy.isShiny === true ? ' · ✦ shiny, 1 in 100' : ''}`,
+        `${middle}   hatched ${dateOf(buddy.hatchedAt)}`,
+        `${bottom}   ${mood === null ? '' : `mood: ${mood.vibe} ${VIBE_MARKS[mood.vibe]} ${mood.why}`}`.trimEnd(),
         '',
         `level ${String(level).padEnd(4)}${meter(into, need)} ${into}/${need} xp, earned from your work`,
-        `belly ${bar(belly)} ${belly}%${belly < HUNGRY ? ', hungry: right click → feed' : ''}`,
+        `belly     ${bar(belly)} ${belly}%${belly < HUNGRY ? ', hungry: right click → feed' : ''}`,
+        `love      ${bar(love)} ${love}%, grows when you pet it or play ball`,
         '',
         `stars are rarity, rolled at hatching: ${ODDS}`,
         'rarer buddies roll higher stats',
@@ -158,6 +228,14 @@ export const cardOf = (buddy: Buddy, now: number): string => {
         `personality: ${MOODS[peak]}`,
         isSnarky(peak) ? 'with CHAOS or SNARK on top it teases you' : 'it cheers you on; a buddy with CHAOS or SNARK on top teases instead',
     ].join('\n')
+}
+
+export const headerOf = (buddy: Buddy, now: number, mood: Mood): string => {
+    const { level, into, need } = levelOf(buddy.xp ?? 0)
+    const filled = Math.round((into / need) * 5)
+
+    return `${buddy.name} · lv ${level} ${'▰'.repeat(filled)}${'▱'.repeat(5 - filled)} · belly ${Math.round(fullnessOf(buddy, now))}%`
+        + ` · love ${Math.round(affectionOf(buddy, now))}% · ${mood.vibe} ${VIBE_MARKS[mood.vibe]}`
 }
 
 export const introOf = (buddy: Buddy): string => {

@@ -1,5 +1,5 @@
 import { rarityOf } from './buddy'
-import type { Rarity, SnackKind } from './buddy'
+import type { Rarity, SnackKind, Vibe } from './buddy'
 import { NAP_H, SPRITE_H, SPRITE_W, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
@@ -51,6 +51,7 @@ export type View = {
     leave: Leave | null
     food: FoodView | null
     isShiny: boolean
+    vibe: Vibe
 }
 
 export type Leave = { species: SpeciesId; age: number }
@@ -66,13 +67,13 @@ const BREATH_MS = 1400
 const WAKE_HOP_MS = 240
 
 export type MenuItem = { key: string; label: string; isOn: boolean }
-export type Menu = { items: readonly MenuItem[] }
+export type Menu = { items: readonly MenuItem[]; header?: string }
 export type MenuSpot = { key: string; x: number; row: number; width: number }
 
 export const menuLayoutOf = (menu: Menu, cols: number): MenuSpot[] => {
     const spots: MenuSpot[] = []
     let x = 1
-    let row = 0
+    let row = menu.header === undefined ? 0 : 1
     for (const item of menu.items) {
         const width = [...item.label].length + 2
         if (x + width > cols - 1 && x > 1) {
@@ -276,6 +277,9 @@ const eyeColor = (v: View, body: number, shade: number, eye: number): number => 
     }
     if (v.mood === 'dizzy') {
         return Math.floor(v.t / 120) % 2 === 0 ? eye : RED
+    }
+    if (v.vibe === 'tired' && (v.mood === 'idle' || v.mood === 'think')) {
+        return v.t % 2400 < 900 ? eye : shade
     }
 
     return v.t % 3300 < 120 ? body : eye
@@ -494,6 +498,12 @@ const drawMood = (c: Canvas, v: View, x0: number): void => {
     }
     if (v.mood === 'dizzy') {
         write(c, side, 0, cycle(['@', '~'], Math.floor(v.t / 150)), 0xffe23b)
+    }
+    if (v.mood === 'idle' && v.vibe === 'joyful' && v.t % 3600 < 900) {
+        write(c, side, Math.floor(v.t / 300) % 2, '♪', 0xffd23b)
+    }
+    if (v.mood === 'idle' && v.vibe === 'lonely' && v.t % 5000 < 900) {
+        write(c, side, 0, '?', 0xb9b5c9)
     }
     if (v.mood === 'sleep' && !isLying(v)) {
         const drift = Math.floor(v.t / 700) % 3
@@ -955,6 +965,7 @@ const drawSnow = (c: Canvas, v: View): void => {
 const MENU_EDGE = 0x6c6880
 const MENU_TEXT = 0xd6d3e0
 const MENU_ON = 0xffd23b
+const MENU_HEADER = 0x9a96ad
 
 const drawMenu = (c: Canvas, v: View): void => {
     if (v.menu === null) {
@@ -965,6 +976,9 @@ const drawMenu = (c: Canvas, v: View): void => {
         c.pixels[i] = NONE
     }
     const items = new Map(v.menu.items.map(item => [item.key, item]))
+    if (v.menu.header !== undefined) {
+        writeAbsolute(c, 1, 0, [...v.menu.header].slice(0, c.width - 2).join(''), MENU_HEADER)
+    }
     menuLayoutOf(v.menu, c.width).forEach(spot => {
         const item = items.get(spot.key)
         if (item !== undefined) {

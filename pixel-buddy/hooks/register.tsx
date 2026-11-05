@@ -2,8 +2,8 @@ import type { EngineInterface, Register, RenderElement, ResolveInput, Timer } fr
 
 import type { BandProps } from './band-client'
 
-import { FULL, HUNGRY, SNACKS, cardOf, fullnessOf, hatch, introOf, levelOf, peakOf } from './buddy'
-import type { Buddy, SnackKind } from './buddy'
+import { FULL, SNACKS, affectionOf, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, peakOf, vibeOf } from './buddy'
+import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
 import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf } from './scene'
@@ -32,6 +32,9 @@ const LONG_THINK_MS = 60000
 const LOOP_ERRORS = 3
 const SNACK_QUEUE = 3
 const HUNGRY_NAG_MS = 20 * 60000
+const TIRED_NAG_MS = 30 * 60000
+const LONELY_NAG_MS = 45 * 60000
+const BREAK_MS = 10 * 60000
 const NOMS = ['nom!', 'yum!', 'crunch!', 'mmm!']
 
 const MOOD_MS: Partial<Record<Mood, number>> = { shock: 1600, dizzy: 3200, happy: 2600, love: 2600 }
@@ -87,6 +90,11 @@ let theme: Theme = 'auto'
 let menuPage: 'main' | 'species' | null = null
 let snacks: Array<{ kind: SnackKind; at: number }> = []
 let hungryNagAt = 0
+let tiredNagAt = 0
+let lonelyNagAt = 0
+let activeSince = 0
+let lastActiveAt = 0
+let joy: { what: string; at: number } | null = null
 
 const ALIASES: Record<string, string> = {
     rename: 'name',
@@ -104,6 +112,7 @@ const menuOf = (): Menu | null => {
         return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }] }
     }
     const items: MenuItem[] = [
+        { key: 'card', label: 'card', isOn: false },
         { key: 'feed', label: 'feed', isOn: false },
         { key: 'new', label: 'change buddy', isOn: false },
         { key: 'theme', label: `theme: ${theme}`, isOn: theme !== 'auto' && theme !== 'off' },
@@ -111,7 +120,7 @@ const menuOf = (): Menu | null => {
         { key: 'close', label: '×', isOn: false },
     ]
 
-    return { items }
+    return { items, header: headerOf(buddy, lastFrameAt || startedAt, feelingOf(lastFrameAt || startedAt)) }
 }
 
 let startedAt = 0
@@ -134,7 +143,7 @@ const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
         }
         buddy = stored
     } else if (!isChangedHere && stored !== undefined && buddy !== null) {
-        buddy = { ...buddy, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly }
+        buddy = { ...buddy, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly, affection: stored.affection ?? buddy.affection }
     }
     theme = await readTheme($)
 }
@@ -241,6 +250,50 @@ const celebrate = (now: number): void => {
     }
 }
 
+const markActive = (now: number): void => {
+    if (now - lastActiveAt > BREAK_MS) {
+        activeSince = now
+    }
+    lastActiveAt = now
+}
+
+const workedMs = (now: number): number => (lastActiveAt !== 0 && now - lastActiveAt <= BREAK_MS ? now - activeSince : 0)
+
+const cheer = (what: string, now: number): void => {
+    joy = { what, at: now }
+}
+
+const feelingOf = (now: number): Feeling => vibeOf({
+    fullness: buddy === null ? 100 : fullnessOf(buddy, now),
+    affection: buddy === null ? 100 : affectionOf(buddy, now),
+    workedMs: workedMs(now),
+    joy: joy === null ? null : { what: joy.what, agoMs: now - joy.at },
+})
+
+const saveBuddy = ($: EngineInterface, next: Buddy): void => {
+    buddy = next
+    void $.store.set(STORE_KEY, next).catch((error: unknown) => {
+        lastDeny = `store failed: ${String(error)}`
+    })
+}
+
+const cherish = ($: EngineInterface, amount: number, now: number): void => {
+    if (buddy !== null) {
+        saveBuddy($, { ...buddy, affection: { value: Math.min(100, Math.round(affectionOf(buddy, now) + amount)), at: now } })
+    }
+}
+
+const CARD_LINES = 7
+
+const showCard = ($: EngineInterface, now: number): void => {
+    if (buddy === null) {
+        return
+    }
+    const lines = cardOf(buddy, now, feelingOf(now)).split('\n').slice(0, CARD_LINES).filter(line => line !== '')
+    lines.forEach(line => $.ui.log(line))
+    $.ui.log('stats and personality: /buddy')
+}
+
 const dropSnack = (kind: SnackKind, now: number): void => {
     if (buddy === null || snacks.length >= SNACK_QUEUE) {
         return
@@ -267,16 +320,14 @@ const grow = ($: EngineInterface, now: number, kind: SnackKind): void => {
         return
     }
     const fullness = fullnessOf(buddy, now)
-    const xp = SNACKS[kind].xp + (kind === 'berry' && fullness < HUNGRY ? 1 : 0)
+    const xp = SNACKS[kind].xp + (kind === 'berry' && feelingOf(now).vibe === 'hungry' ? 1 : 0)
     const before = levelOf(buddy.xp ?? 0).level
     const next: Buddy = { ...buddy, xp: (buddy.xp ?? 0) + xp, belly: { value: Math.min(100, Math.round(fullness + SNACKS[kind].food)), at: now } }
-    buddy = next
-    void $.store.set(STORE_KEY, next).catch((error: unknown) => {
-        lastDeny = `store failed: ${String(error)}`
-    })
+    saveBuddy($, next)
     const after = levelOf(next.xp ?? 0).level
     setMood('happy', now)
     if (after > before) {
+        cheer(`a new level, ${after}`, now)
         sayText(`level ${after}!`, now)
         action = null
         celebrate(now)
@@ -297,7 +348,7 @@ const stepAction = (now: number, current: Mood): void => {
         if (nextTrickAt !== 0) {
             action = { kind: isNinja() ? (random() < 0.6 ? 'fruit' : 'swing') : 'trick', at: now }
         }
-        nextTrickAt = now + 20000 + random() * 15000
+        nextTrickAt = feelingOf(now).vibe === 'joyful' ? now + 10000 + random() * 8000 : now + 20000 + random() * 15000
     }
 }
 
@@ -360,6 +411,7 @@ const bandPropsOf = (now: number): BandProps | null => {
         menu: menuOf(),
         snack: snacks[0] ?? null,
         isShiny: buddy.isShiny === true,
+        vibe: feelingOf(now).vibe,
     }
 }
 
@@ -379,6 +431,20 @@ const landJump = (now: number): void => {
     jumpAt = null
     setMood('happy', now)
     sayText('wheee!', now)
+}
+
+const nag = (now: number): void => {
+    const { vibe } = feelingOf(now)
+    if (vibe === 'hungry' && now - hungryNagAt > HUNGRY_NAG_MS) {
+        hungryNagAt = now
+        say('hungry', now, true)
+    } else if (vibe === 'tired' && now - tiredNagAt > TIRED_NAG_MS) {
+        tiredNagAt = now
+        say('tired', now, true)
+    } else if (vibe === 'lonely' && now - lonelyNagAt > LONELY_NAG_MS) {
+        lonelyNagAt = now
+        say('lonely', now, true)
+    }
 }
 
 const refreshAgents = async ($: EngineInterface): Promise<void> => {
@@ -413,10 +479,8 @@ const frame = async ($: EngineInterface): Promise<void> => {
     hearts = hearts.filter(at => now - at < HEART_MS)
     landJump(now)
     stepAction(now, demoAt === null ? currentMood(now) : mood)
-    if (buddy !== null && !isOff && demoAt === null && hatchAt === null && turnAt === null && currentMood(now) !== 'sleep'
-        && now - hungryNagAt > HUNGRY_NAG_MS && fullnessOf(buddy, now) < HUNGRY) {
-        hungryNagAt = now
-        say('hungry', now, true)
+    if (buddy !== null && !isOff && demoAt === null && hatchAt === null && turnAt === null && currentMood(now) !== 'sleep') {
+        nag(now)
     }
     if (frames % AGENTS_EVERY_FRAMES === 0) {
         await refreshAgents($)
@@ -488,6 +552,7 @@ const rehatch = async ($: EngineInterface, now: number, species?: SpeciesId): Pr
     leave = buddy === null ? null : { species: buddy.species, at: now }
     buddy = hatch(random, now, species)
     snacks = []
+    joy = null
     buddyVersion += 1
     hatchAt = leave === null ? now : now + LEAVE_MS
     isNewborn = true
@@ -505,11 +570,14 @@ const help = (): string => [
     '  double click      jump',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu: feed, change buddy, theme (calendar, winter, halloween, off), hide',
+    '  right click       menu with a summary line: card, feed, change buddy, theme (calendar, winter, halloween, off), hide',
     '',
     'It eats what your work drops: a cookie for each answer from Claude, a fish for green tests,',
     'a cake for a commit or a finished plan. Snacks give it xp, levels come from xp.',
     'It never starves: a hungry buddy just asks for a berry from the menu.',
+    '',
+    'Its mood: joyful after good news, tired after two hours of work without a break,',
+    'lonely when nobody pets it, hungry without snacks. The card says why and what helps.',
     '',
     'Commands, for what a click cannot do:',
     '  /buddy               its card: rarity, stats, personality',
@@ -531,7 +599,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
     const current = buddy as Buddy
     if (arg === '' || arg === 'card') {
-        return `${cardOf(current, now)}\n\nMenu: right click on the strip\n/buddy name <new name> · /buddy feed · /buddy on · /buddy help`
+        return `${cardOf(current, now, feelingOf(now))}\n\nMenu: right click on the strip\n/buddy name <new name> · /buddy feed · /buddy on · /buddy help`
     }
     if (arg === 'feed') {
         return feedByHand(now)
@@ -613,6 +681,9 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
 const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<void> => {
     if (key === 'open' || key === 'back') {
         menuPage = 'main'
+    } else if (key === 'card') {
+        menuPage = null
+        showCard($, now)
     } else if (key === 'feed') {
         menuPage = null
         feedByHand(now)
@@ -702,6 +773,7 @@ export const register: Register = on => {
     on('prompt.submit', async ($, e, next) => {
         const now = await $.clock.now()
         ensureTimer($, now)
+        markActive(now)
         if (now - lastSeenAt > SLEEP_AFTER_MS) {
             say('back', now, true)
         }
@@ -714,6 +786,7 @@ export const register: Register = on => {
         if (e.agentId === undefined) {
             const now = await $.clock.now()
             turnAt = now
+            markActive(now)
             saidThinking = false
             if (MOOD_MS[mood] === undefined) {
                 setMood('think', now)
@@ -729,6 +802,7 @@ export const register: Register = on => {
             const isMarathon = e.reason === 'answer' && now - turnAt > MARATHON_MS
             turnAt = null
             lastSeenAt = now
+            markActive(now)
             if (e.reason === 'answer') {
                 dropSnack('cookie', now)
             }
@@ -763,6 +837,7 @@ export const register: Register = on => {
             return ran
         }
         const now = await $.clock.now()
+        markActive(now)
         if (ran.isError === true) {
             errorStreak += 1
             if (errorStreak >= LOOP_ERRORS) {
@@ -790,10 +865,12 @@ export const register: Register = on => {
             say('commit', now)
             celebrate(now)
             dropSnack('cake', now)
+            cheer('a commit', now)
         } else if (e.tool === 'Bash' && isTestRun(e.command)) {
             say('green', now)
             celebrate(now)
             dropSnack('fish', now)
+            cheer('green tests', now)
         }
         if (e.tool === 'TodoWrite') {
             const isDone = e.todos.length > 0 && e.todos.every(todo => todo.status === 'completed')
@@ -802,6 +879,7 @@ export const register: Register = on => {
                 say('plan', now, true)
                 celebrate(now)
                 dropSnack('cake', now)
+                cheer('a finished plan', now)
             }
             todoDone = isDone
         }
@@ -820,9 +898,11 @@ export const register: Register = on => {
         lastSeenAt = now
         if (kind === 'pet') {
             pet(now)
+            cherish($, 8, now)
         }
         if (kind === 'jump') {
             startJump(now)
+            cherish($, 2, now)
         }
         if (kind === 'menu') {
             await pressMenu($, now, String((e.data as { key?: unknown } | null)?.key ?? 'close'))
@@ -838,6 +918,7 @@ export const register: Register = on => {
                 grow($, now, eaten.kind)
                 if (data?.isHanded === true) {
                     hearts = [now, now + 250, now + 500]
+                    cherish($, 6, now)
                 }
             }
         }
@@ -850,6 +931,7 @@ export const register: Register = on => {
                 setMood('happy', now)
                 sayText('got it!', now)
             }
+            cherish($, 5, now)
         }
         const props = bandPropsOf(now)
 

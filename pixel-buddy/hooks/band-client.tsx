@@ -1,6 +1,6 @@
 import type { ClientElements, ClientModule, ClientPointerEvent, JsonValue } from 'claude-code'
 
-import type { Rarity, SnackKind } from './buddy'
+import type { Rarity, SnackKind, Vibe } from './buddy'
 import { DEFAULT, NAP_FADE_MS, ROWS, TRAIL_MS, maxXOf, menuLayoutOf, menuRowsOf, paint } from './scene'
 import type { ActionKind, Menu, Mood, Pose, Season, View } from './scene'
 import { SPRITE_W } from './species'
@@ -26,6 +26,7 @@ export type BandProps = {
     menu: Menu | null
     snack: { kind: SnackKind; at: number } | null
     isShiny: boolean
+    vibe: Vibe
 }
 
 type Food = { kind: SnackKind; at: number; x: number; landAt: number; eatenAt: number | null; isHanded: boolean }
@@ -254,11 +255,11 @@ const step = (s: BandState, p: BandProps, now: number): BandState => {
     const gap = target - x
     const isTyping = now - p.typingAt < TYPING_MS
     const glance = now > s.nextGlanceAt
-        ? { glanceX: Math.round(Math.random() * 2) - 1, glanceUntil: now + 1200, nextGlanceAt: now + 4000 + Math.random() * 5000, hopUntil: Math.random() < 0.25 ? now + 200 : 0 }
+        ? { glanceX: Math.round(Math.random() * 2) - 1, glanceUntil: now + 1200, nextGlanceAt: now + 4000 + Math.random() * 5000, hopUntil: Math.random() < (p.vibe === 'joyful' ? 0.6 : 0.25) ? now + 200 : 0 }
         : { glanceX: s.glanceX, glanceUntil: s.glanceUntil, nextGlanceAt: s.nextGlanceAt, hopUntil: s.hopUntil }
 
     const isHurrying = food !== null && food.isHanded && food.eatenAt === null
-    const speed = isChasing(s, p) || s.toy !== null || isHurrying ? CHASE_SPEED : WALK_SPEED
+    const speed = isChasing(s, p) || s.toy !== null || isHurrying ? CHASE_SPEED : WALK_SPEED * (p.vibe === 'tired' ? 0.55 : p.vibe === 'hungry' ? 0.8 : 1)
     const isGoingToFood = food !== null && food.eatenAt === null && now >= food.landAt
     const watched = s.toy !== null ? s.toy.x : isGoingToFood ? food.x : s.pointer === null || s.drag !== null ? null : s.pointer.x
     const offset = watched === null ? 0 : watched - (x + SPRITE_W / 2)
@@ -392,6 +393,7 @@ const viewOf = (s: BandState, p: BandProps, now: number): View => ({
         eatenAge: s.food.eatenAt === null ? null : now - s.food.eatenAt,
     },
     isShiny: p.isShiny,
+    vibe: p.vibe,
     season: p.season,
     menu: p.menu,
     nap: s.nap === null ? null : { x: s.nap.x, age: now - s.nap.at, wokeAge: s.nap.wokeAt === null ? null : now - s.nap.wokeAt },
