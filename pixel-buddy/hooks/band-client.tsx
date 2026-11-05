@@ -27,6 +27,7 @@ export type BandProps = {
     snack: { kind: SnackKind; at: number } | null
     isShiny: boolean
     vibe: Vibe
+    trophy: { rarity: Rarity; at: number } | null
 }
 
 type Food = { kind: SnackKind; at: number; x: number; landAt: number; eatenAt: number | null; isHanded: boolean }
@@ -394,6 +395,7 @@ const viewOf = (s: BandState, p: BandProps, now: number): View => ({
     },
     isShiny: p.isShiny,
     vibe: p.vibe,
+    trophy: p.trophy === null ? null : { rarity: p.trophy.rarity, age: now - p.trophy.at },
     season: p.season,
     menu: p.menu,
     nap: s.nap === null ? null : { x: s.nap.x, age: now - s.nap.at, wokeAge: s.nap.wokeAt === null ? null : now - s.nap.wokeAt },

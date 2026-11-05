@@ -6,10 +6,12 @@ import { FULL, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, 
 import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
-import { BUBBLE_MS, HEART_MS, LEAVE_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, encode, portraitOf } from './scene'
+import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, encode, portraitOf } from './scene'
 import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
 import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
+import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, foundOf, listOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
+import type { Found, TrophyId } from './trophies'
 
 const CLIENT_KEY = 'buddy-band'
 const PET_PREFIX = 'pet:'
@@ -21,6 +23,8 @@ const LEGACY_NEST = 'nest'
 const NEST_MAX = 12
 const HAT_KEY = 'hat'
 const THEME_KEY = 'theme'
+const TROPHY_KEY = 'trophies'
+const TALLY_KEY = 'tally'
 const THEMES = ['auto', 'winter', 'halloween', 'off'] as const
 
 type Theme = (typeof THEMES)[number]
@@ -43,6 +47,7 @@ const LONELY_NAG_MS = 45 * 60000
 const BREAK_MS = 10 * 60000
 const CARD_MS = 60000
 const CARD_DRAW_WAIT_MS = 1500
+const TROPHY_SAY_MS = 1500
 const NOMS = ['nom!', 'yum!', 'crunch!', 'mmm!']
 
 const MOOD_MS: Partial<Record<Mood, number>> = { shock: 1600, dizzy: 3200, happy: 2600, love: 2600 }
@@ -113,9 +118,17 @@ let cardDrawnAt = 0
 let isCardInChat = false
 let lastMenuKey = ''
 let aboveDraws = 0
+let found: Found = {}
+let trophyShow: { id: TrophyId; at: number; isSaid: boolean } | null = null
+let trophyQueue: TrophyId[] = []
+let dizzyAt = 0
+let answers = 0
+let catches: number[] = []
+let talliedDay = ''
 
 const ALIASES: Record<string, string> = {
     rename: 'name',
+    trophy: 'trophies',
 }
 
 const speciesFor = (word: string | undefined) => (word === undefined ? undefined : SPECIES.find(one => one.id === word.toLowerCase()))
@@ -230,6 +243,7 @@ const syncShared = async ($: EngineInterface): Promise<void> => {
         buddy = { ...buddy, name: stored.name, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly, affection: stored.affection ?? buddy.affection }
     }
     theme = await readTheme($)
+    found = { ...foundOf(await $.store.get(TROPHY_KEY).catch(() => undefined)), ...found }
 }
 
 const isHolidays = (now: number): boolean => {
@@ -316,6 +330,55 @@ const isNinja = (): boolean => buddy?.species === 'ninja'
 
 const isShown = (now: number): boolean => buddy !== null && (!isOff || (leave !== null && now - leave.at < LEAVE_MS))
 
+const award = ($: EngineInterface, id: TrophyId, now: number): void => {
+    if (found[id] !== undefined) {
+        return
+    }
+    found = { ...found, [id]: now }
+    trophyQueue = [...trophyQueue, id]
+    void $.store.get(TROPHY_KEY)
+        .then(stored => $.store.set(TROPHY_KEY, { ...foundOf(stored), ...found }))
+        .catch((error: unknown) => {
+            lastDeny = `store failed: ${String(error)}`
+        })
+}
+
+const claimOwned = ($: EngineInterface, now: number): void => {
+    ownedTrophiesOf([...(buddy === null ? [] : [buddy]), ...nest]).forEach(id => award($, id, now))
+}
+
+const tallyDay = async ($: EngineInterface, now: number): Promise<void> => {
+    if (talliedDay === dayKeyOf(now)) {
+        return
+    }
+    const tally = nextTally(tallyOf(await $.store.get(TALLY_KEY)), now)
+    talliedDay = tally.day
+    await $.store.set(TALLY_KEY, tally)
+    if (tally.streak >= REGULAR_DAYS) {
+        award($, 'regular', now)
+    }
+}
+
+const showTrophy = ($: EngineInterface, now: number): void => {
+    if (trophyShow !== null && !trophyShow.isSaid && now - trophyShow.at > TROPHY_SAY_MS) {
+        trophyShow = { ...trophyShow, isSaid: true }
+        sayText(`${trophyOf(trophyShow.id).name}!`, now)
+    }
+    if (trophyShow !== null && now - trophyShow.at > TROPHY_MS) {
+        trophyShow = null
+    }
+    const [next, ...rest] = trophyQueue
+    if (trophyShow !== null || next === undefined || buddy === null || hatchAt !== null || !isShown(now) || demoAt !== null) {
+        return
+    }
+    trophyQueue = rest
+    trophyShow = { id: next, at: now, isSaid: false }
+    setMood('happy', now)
+    bubble = null
+    action = null
+    $.ui.toast(toastOf(next, found))
+}
+
 const pet = (now: number): void => {
     if (buddy === null) {
         return
@@ -383,6 +446,8 @@ const cardInChat = ($: EngineInterface, now: number): void => {
     sayText('here is my card, in the chat', now)
 }
 
+const hexOf = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
+
 const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: number): RenderElement | null => {
     if (buddy === null || cardAt === null) {
         return null
@@ -390,7 +455,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
     cardDrawnAt = now
     const { Box, Text } = $.ui.resolve(e)
     const rarity = rarityOf(buddy.rarity)
-    const color = `#${rarity.color.toString(16).padStart(6, '0')}`
+    const color = hexOf(rarity.color)
     const species = speciesOf(buddy.species)
     const feeling = feelingOf(now)
     const { level, into, need } = levelOf(buddy.xp ?? 0)
@@ -424,6 +489,13 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                         <Text> {love}%</Text>
                     </Box>
                 </Box>
+            </Box>
+            <Box flexDirection="row">
+                <Text>trophies </Text>
+                {TROPHIES.map(one => (found[one.id] === undefined
+                    ? <Text key={one.id} dimColor>·</Text>
+                    : <Text key={one.id} color={hexOf(rarityOf(one.rarity).color)}>◆</Text>))}
+                <Text dimColor> {countOf(found)} of {TROPHIES.length} · /buddy trophies</Text>
             </Box>
             <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
         </Box>
@@ -461,6 +533,12 @@ const grow = ($: EngineInterface, now: number, kind: SnackKind): void => {
     const next: Buddy = { ...buddy, xp: (buddy.xp ?? 0) + xp, belly: { value: Math.min(100, Math.round(fullness + SNACKS[kind].food)), at: now } }
     saveBuddy($, next)
     const after = levelOf(next.xp ?? 0).level
+    void tallyDay($, now).catch((error: unknown) => {
+        lastDeny = `store failed: ${String(error)}`
+    })
+    if (after >= GROWN_LEVEL) {
+        award($, 'grown', now)
+    }
     setMood('happy', now)
     if (after > before) {
         cheer(`a new level, ${after}`, now)
@@ -548,6 +626,7 @@ const bandPropsOf = (now: number): BandProps | null => {
         snack: snacks[0] ?? null,
         isShiny: buddy.isShiny === true,
         vibe: feelingOf(now).vibe,
+        trophy: trophyShow === null ? null : { rarity: trophyOf(trophyShow.id).rarity, at: trophyShow.at },
     }
 }
 
@@ -583,9 +662,12 @@ const nag = (now: number): void => {
     }
 }
 
-const refreshAgents = async ($: EngineInterface): Promise<void> => {
+const refreshAgents = async ($: EngineInterface, now: number): Promise<void> => {
     const list = await $.agent.list()
     agents = list.filter(agent => agent.status === 'running').length
+    if (agents >= HIVE) {
+        award($, 'hive', now)
+    }
 }
 
 const frame = async ($: EngineInterface): Promise<void> => {
@@ -609,6 +691,7 @@ const frame = async ($: EngineInterface): Promise<void> => {
         leave = null
         $.ui.invalidate('ui.render')
     }
+    showTrophy($, now)
     if (turnAt !== null && !saidThinking && now - turnAt > LONG_THINK_MS) {
         saidThinking = true
         say('thinking', now)
@@ -630,7 +713,7 @@ const frame = async ($: EngineInterface): Promise<void> => {
         nag(now)
     }
     if (frames % AGENTS_EVERY_FRAMES === 0) {
-        await refreshAgents($)
+        await refreshAgents($, now)
     }
     if (frames % SYNC_EVERY_FRAMES === 0) {
         await syncShared($)
@@ -748,6 +831,7 @@ const rehatch = async ($: EngineInterface, now: number, species?: SpeciesId): Pr
         return false
     }
     await swapTo($, now, hatch(random, now, species), true)
+    claimOwned($, now)
 
     return true
 }
@@ -775,10 +859,14 @@ const help = (): string => [
     'Its mood: joyful after good news, tired after two hours of work without a break,',
     'lonely when nobody pets it, hungry without snacks. The card says why and what helps.',
     '',
+    'Trophies come from rare moments: a commit deep in the night, ten balls caught in a minute, and more.',
+    'Some are secret. Each one brings fireworks, /buddy trophies lists them.',
+    '',
     'Commands, for what a click cannot do:',
     '  /buddy               its full card: portrait, mood, level, belly, love, stats, personality',
     '  /buddy name <name>   rename it',
     '  /buddy feed          give it a berry',
+    '  /buddy trophies      the trophies you found and the ones still open',
     '  /buddy on            bring it back in this session after hide',
     '  /buddy help          this list',
     '',
@@ -802,6 +890,9 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
     if (arg === 'feed') {
         return feedByHand(now)
+    }
+    if (arg === 'trophies') {
+        return listOf(found)
     }
     if (arg === 'pet') {
         pet(now)
@@ -962,6 +1053,8 @@ export const register: Register = on => {
         lastSeenAt = now
         await $.command.register({ name: COMMAND, description: 'Your pixel buddy. Most things are clicks: right click it for the menu', argumentHint: 'help · name <new name> · on' })
         await loadBuddy($, now)
+        found = foundOf(await $.store.get(TROPHY_KEY))
+        claimOwned($, now)
         startedAt = now
         await dropLegacyKeys($)
         ensureTimer($, now)
@@ -1026,6 +1119,10 @@ export const register: Register = on => {
             markActive(now)
             if (e.reason === 'answer') {
                 dropSnack('cookie', now)
+                answers += 1
+                if (answers === DEEP_THOUGHT) {
+                    award($, 'deep-thought', now)
+                }
             }
             if (isMarathon) {
                 setMood('happy', now)
@@ -1063,6 +1160,7 @@ export const register: Register = on => {
             errorStreak += 1
             if (errorStreak >= LOOP_ERRORS) {
                 errorStreak = 0
+                dizzyAt = now
                 setMood('dizzy', now)
                 say('loop', now, true)
             } else if (isNinja()) {
@@ -1087,11 +1185,15 @@ export const register: Register = on => {
             celebrate(now)
             dropSnack('cake', now)
             cheer('a commit', now)
+            commitTrophiesAt(new Date(now)).forEach(id => award($, id, now))
         } else if (e.tool === 'Bash' && isTestRun(e.command)) {
             say('green', now)
             celebrate(now)
             dropSnack('fish', now)
             cheer('green tests', now)
+            if (now - dizzyAt < COMEBACK_MS) {
+                award($, 'comeback', now)
+            }
         }
         if (e.tool === 'TodoWrite') {
             const isDone = e.todos.length > 0 && e.todos.every(todo => todo.status === 'completed')
@@ -1120,6 +1222,9 @@ export const register: Register = on => {
         if (kind === 'pet') {
             pet(now)
             cherish($, 8, now)
+            if (buddy?.species === 'duck' && now - dizzyAt < DUCK_MS) {
+                award($, 'rubber-duck', now)
+            }
         }
         if (kind === 'jump') {
             startJump(now)
@@ -1151,6 +1256,10 @@ export const register: Register = on => {
             } else {
                 setMood('happy', now)
                 sayText('got it!', now)
+                catches = [...catches.filter(at => now - at < BALL_WINDOW_MS), now]
+                if (catches.length >= BALLS) {
+                    award($, 'ball', now)
+                }
             }
             cherish($, 5, now)
         }

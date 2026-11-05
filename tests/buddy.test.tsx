@@ -5,6 +5,7 @@ import type { Buddy } from './buddy'
 import { isTestRun } from './register'
 import { paint } from './scene'
 import { SPECIES } from './species'
+import { commitTrophiesAt, nextTally } from './trophies'
 import type { View } from './scene'
 
 const BAND = {
@@ -324,7 +325,7 @@ test('a bubble said on waking up is drawn over the fading tree, its frame whole'
         pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
         bubble: { text: 'hi there', age: 2000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
         action: null, toy: null, spark: null, season: null, menu: null,
-        nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null, food: null, isShiny: false, vibe: 'content',
+        nap: { x: 40, age: 9000, wokeAge: 100 }, trail: [], leave: null, food: null, isShiny: false, vibe: 'content', trophy: null,
     }
     const cells = paint(view)
     const middleRow = Array.from({ length: 64 }, (_, x) => String.fromCodePoint(cells[(64 + x) * 3] ?? 0x20)).join('')
@@ -338,7 +339,7 @@ test('every species does its own trick beside it while it works', () => {
             t: 2000, cols: 64, species, rarity: 'common', mood: 'tool', moodAge: 0,
             pose: { x: 34, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
             bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
-            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content',
+            action, toy: null, spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content', trophy: null,
         }
 
         return [...paint(view)].join(',')
@@ -419,7 +420,7 @@ const footerView = (overrides: Partial<View>): View => ({
     t: 1000, cols: 49, species: 'ninja', rarity: 'common', mood: 'idle', moodAge: 0,
     pose: { x: 38, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 },
     bubble: null, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null, action: null, toy: null,
-    spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content',
+    spark: null, season: null, menu: null, nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content', trophy: null,
     ...overrides,
 })
 
@@ -868,7 +869,7 @@ test('a tired buddy keeps its eyes half shut', () => {
     expect([...paint({ ...idle, vibe: 'tired' })].join(',')).not.toBe([...paint(idle)].join(','))
 })
 
-test('the right click menu starts with a summary line, card opens one framed card above the prompt, pressing it again keeps it, hide card closes it', async ($, on) => {
+test('the right click menu starts with a summary line, card opens one framed card with the trophy shelf above the prompt, pressing it again keeps it, hide card closes it', async ($, on) => {
     const now = Date.now()
     stubEngine(on, () => now)
     const toasts: string[] = []
@@ -877,7 +878,7 @@ test('the right click menu starts with a summary line, card opens one framed car
 
         return { value: undefined }
     })
-    storeOn(on, { buddy: { ...NOODLE, xp: 12, belly: { value: 80, at: now }, affection: { value: 60, at: now } } })
+    storeOn(on, { buddy: { ...NOODLE, xp: 12, belly: { value: 80, at: now }, affection: { value: 60, at: now } }, trophies: { 'night-owl': now } })
     on('ui.invalidate', () => ({ value: undefined }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -906,6 +907,8 @@ test('the right click menu starts with a summary line, card opens one framed car
     expect(card).toContain('Noodle')
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
+    expect(card).toContain('"color":"#4aa8ff"')
+    expect(card).toContain('/buddy trophies')
     expect(toasts[0]).toBe('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
     expect(again).toBeTruthy()
     expect(menuOpen).toContain('"label":"hide card"')
@@ -1001,4 +1004,245 @@ test('hiding the buddy says how to bring it back', async ($, on) => {
 
     expect(result.text).toBe('Noodle is hiding. /buddy on brings it back')
     expect(toasts).toEqual(['Noodle is hiding in this window. /buddy on brings it back'])
+})
+
+const trophiesIn = (store: Record<string, unknown>): string[] => Object.keys((store.trophies ?? {}) as object)
+
+const toastsOn = (on: On): string[] => {
+    const toasts: string[] = []
+    on('ui.toast', (_, e) => {
+        toasts.push((e as { text: string }).text)
+
+        return { value: undefined }
+    })
+
+    return toasts
+}
+
+test('a commit earns a trophy only at its own hour: deep night, Friday evening, 13:37, Halloween, New Year\'s Eve', () => {
+    expect(commitTrophiesAt(new Date(2026, 10, 3, 3, 10))).toEqual(['night-owl'])
+    expect(commitTrophiesAt(new Date(2026, 10, 6, 19, 0))).toEqual(['friday'])
+    expect(commitTrophiesAt(new Date(2026, 10, 3, 13, 37))).toEqual(['leet'])
+    expect(commitTrophiesAt(new Date(2026, 9, 31, 11, 0))).toEqual(['spooky'])
+    expect(commitTrophiesAt(new Date(2026, 11, 31, 23, 50))).toEqual(['new-year'])
+    expect(commitTrophiesAt(new Date(2027, 0, 1, 0, 20))).toEqual(['new-year'])
+    expect(commitTrophiesAt(new Date(2026, 10, 3, 12, 0))).toEqual([])
+    expect(commitTrophiesAt(new Date(2026, 10, 3, 5, 0))).toEqual([])
+})
+
+test('the streak of days with a snack grows day by day, stays the same within a day and starts over after a gap', () => {
+    const monday = new Date(2026, 10, 2, 10, 0).getTime()
+    const day = 24 * 3600000
+    const first = nextTally({ day: '', streak: 0 }, monday)
+    const second = nextTally(first, monday + day)
+
+    expect(first).toEqual({ day: '2026-11-02', streak: 1 })
+    expect(nextTally(first, monday + 3600000)).toEqual(first)
+    expect(second.streak).toBe(2)
+    expect(nextTally(second, monday + 3 * day).streak).toBe(1)
+})
+
+test('a commit deep in the night earns Night Owl once: a toast, fireworks, then its name, and the store keeps it', async ($, on) => {
+    let now = new Date(2026, 10, 4, 3, 12).getTime()
+    stubEngine(on, () => now, true)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('tool.call', () => ({ result: 'ok', isError: false }))
+    const toasts = toastsOn(on)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    now += 5000
+    await ui.advance(200)
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "x"' } as unknown as Parameters<typeof $.tool.call>[0])
+    now += 200
+    await ui.advance(200)
+    await ui.redraw()
+    const fireworks = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    now += 2000
+    await ui.advance(200)
+    await ui.redraw()
+    const named = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m "y"' } as unknown as Parameters<typeof $.tool.call>[0])
+    now += 5000
+    await ui.advance(200)
+    await ui.unmount()
+
+    expect(trophiesIn(store)).toEqual(['night-owl'])
+    expect(toasts).toEqual(['Trophy: Night Owl, rare, for a commit between 2 and 5 at night. 1 of 14 found, /buddy trophies lists them'])
+    expect(fireworks).toContain('"trophy":{"rarity":"rare"')
+    expect(named).toContain('"text":"Night Owl!"')
+})
+
+test('a legendary and a shiny buddy already in the nest earn Legend and Shiny! on the next start, a plain one earns nothing', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = {
+        'pet:1': { ...NOODLE, hatchedAt: 1 }, 'pet:2': { ...NOODLE, rarity: 'legendary', hatchedAt: 2 }, 'pet:3': { ...NOODLE, isShiny: true, hatchedAt: 3 }, main: 1,
+    }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const result = await $.command.run({ command: 'buddy', args: 'trophies' } as Parameters<typeof $.command.run>[0])
+
+    expect(trophiesIn(store)).toEqual(['shiny', 'legend'])
+    expect(result.text).toContain('Trophies: 2 of 14 found')
+    expect(result.text).toMatch(/◆ Legend, legendary: a legendary buddy in your nest\. Found \d{4}-\d{2}-\d{2}/)
+    expect(result.text).toContain('· Night Owl, rare: a commit between 2 and 5 at night')
+    expect(result.text).toContain('· ??? a secret epic one')
+    expect(result.text).not.toContain('1337')
+})
+
+test('green tests soon after three failures in a row earn Comeback, a duck petted then earns Rubber Duck', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, species: 'duck' } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('tool.call', (_, e) => ({ result: 'x', isError: (e as { command: string }).command === 'false' }))
+    const run = (command: string) => $.tool.call({ tool: 'Bash', command } as unknown as Parameters<typeof $.tool.call>[0])
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await run('npm test')
+    const before = trophiesIn(store)
+    await run('false')
+    await run('false')
+    await run('false')
+    await run('npm test')
+    await ui.post({ type: 'pet' }, { in: 'buddy-band' })
+    await ui.unmount()
+
+    expect(before).toEqual([])
+    expect(trophiesIn(store)).toEqual(['comeback', 'rubber-duck'])
+})
+
+test('ten balls caught within a minute earn Ball Champ, nine do not', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, species: 'cat' } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    for (let k = 0; k < 9; k++) {
+        await ui.post({ type: 'caught', kind: 'ball' }, { in: 'buddy-band' })
+    }
+    const nine = trophiesIn(store)
+    await ui.post({ type: 'caught', kind: 'ball' }, { in: 'buddy-band' })
+    await ui.unmount()
+
+    expect(nine).toEqual([])
+    expect(trophiesIn(store)).toEqual(['ball'])
+})
+
+test('the 42nd answer of a session earns Deep Thought', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE } }
+    storeOn(on, store)
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', () => ({ text: '' }))
+    const answer = async (k: number) => {
+        await $.turn.start({ text: 'go', turnId: `t${k}` } as Parameters<typeof $.turn.start>[0])
+        await $.turn.complete({ turnId: `t${k}`, reason: 'answer', answer: 'ok', text: 'ok' } as unknown as Parameters<typeof $.turn.complete>[0])
+    }
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    for (let k = 1; k < 42; k++) {
+        await answer(k)
+    }
+    const before = trophiesIn(store)
+    await answer(42)
+
+    expect(before).toEqual([])
+    expect(trophiesIn(store)).toEqual(['deep-thought'])
+})
+
+test('a snack on the seventh day in a row earns Regular', async ($, on) => {
+    const now = Date.now()
+    stubEngine(on, () => now)
+    const yesterday = new Date(now - 24 * 3600000)
+    const day = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, belly: { value: 50, at: now } }, tally: { day, streak: 6 } }
+    storeOn(on, store)
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', () => ({ text: '' }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await $.turn.start({ text: 'go', turnId: 't1' } as Parameters<typeof $.turn.start>[0])
+    await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'done', text: 'done' } as unknown as Parameters<typeof $.turn.complete>[0])
+    await ui.redraw()
+    const snack = await snackOf(ui)
+    await ui.post({ type: 'ate', at: snack?.at ?? 0, kind: 'cookie', isHanded: false }, { in: 'buddy-band' })
+    await realPause(50)
+    await ui.unmount()
+
+    expect(store.tally).toMatchObject({ streak: 7 })
+    expect(trophiesIn(store)).toEqual(['regular'])
+})
+
+test('a trophy brings a gold cup and fireworks on both sides of the buddy, and leaves nothing behind', () => {
+    const quiet = footerView({ cols: 64, pose: { x: 27, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 } })
+    const still = paint(quiet)
+    const changedColumns = (view: View): number[] => {
+        const cells = paint(view)
+
+        return Array.from({ length: cells.length / 3 }, (_, i) => i)
+            .filter(i => cells[i * 3] !== still[i * 3] || cells[i * 3 + 1] !== still[i * 3 + 1] || cells[i * 3 + 2] !== still[i * 3 + 2])
+            .map(i => i % view.cols)
+    }
+    const party = { ...quiet, trophy: { rarity: 'rare' as const, age: 900 } }
+    const changed = changedColumns(party)
+
+    expect([...paint(party)]).toContain(0xffcf3f)
+    expect([...still]).not.toContain(0xffcf3f)
+    expect(changed.some(x => x < 25)).toBe(true)
+    expect(changed.some(x => x > 47)).toBe(true)
+    expect(changedColumns({ ...quiet, trophy: { rarity: 'rare', age: 3700 } })).toEqual([])
+})
+
+test('eight subagents running at once earn Hive Mind, seven do not', async ($, on) => {
+    let now = Date.now()
+    let running = 7
+    stubEngine(on, () => now, true)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('agent.list', () => ({ value: Array.from({ length: running }, (_, k) => ({ id: `a${k}`, status: 'running' })) }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    now += 1000
+    await ui.advance(1000)
+    const seven = trophiesIn(store)
+    running = 8
+    now += 1000
+    await ui.advance(1000)
+    await ui.unmount()
+
+    expect(seven).toEqual([])
+    expect(trophiesIn(store)).toEqual(['hive'])
+})
+
+test('the snack that brings a buddy to level 10 earns All Grown Up', async ($, on) => {
+    const now = Date.now()
+    stubEngine(on, () => now)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, xp: 449, belly: { value: 50, at: now } } }
+    storeOn(on, store)
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', () => ({ text: '' }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    const before = trophiesIn(store)
+    await $.turn.start({ text: 'go', turnId: 't1' } as Parameters<typeof $.turn.start>[0])
+    await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'done', text: 'done' } as unknown as Parameters<typeof $.turn.complete>[0])
+    await ui.redraw()
+    const snack = await snackOf(ui)
+    await ui.post({ type: 'ate', at: snack?.at ?? 0, kind: 'cookie', isHanded: false }, { in: 'buddy-band' })
+    await realPause(50)
+    await ui.unmount()
+
+    expect(before).toEqual([])
+    expect(trophiesIn(store)).toEqual(['grown'])
 })

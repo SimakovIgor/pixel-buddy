@@ -30,12 +30,17 @@ A right click opens the menu with a summary line. `card` shows its card in a fra
 
 ![A right click opens the menu with the summary line, card opens the buddy's card in a frame above the prompt](pixel-buddy/docs/card.gif)
 
+Rare moments of your work earn trophies: a commit deep in the night, a snack every day for a week, a legendary egg.
+Some are secret. Each one brings a gold cup and fireworks:
+
+![A trophy: a gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](pixel-buddy/docs/trophy.gif)
+
 Eight species, and each one comes and goes in its own way:
 
 ![Cat, duck, ghost, octopus, axolotl, robot, ninja and penguin arrive and leave: running, hatching, fading, ink, bubbles, a rocket, smoke and a belly slide](pixel-buddy/docs/arrivals.gif)
 
-Feeding, moods, the nest, clicks, commands, what the buddy runs and sends, and troubleshooting are in the plugin's
-[README](pixel-buddy/README.md).
+Feeding, moods, the nest, trophies, clicks, commands, what the buddy runs and sends, and troubleshooting are in the
+plugin's [README](pixel-buddy/README.md).
 
 ## In this repository
 

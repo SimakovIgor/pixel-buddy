@@ -90,6 +90,27 @@ Every buddy you hatch stays in your nest with its level, belly and love, up to 1
 and a buddy resting in the nest does not get hungry or lonely. Each window keeps its own buddy, also after
 `claude --resume`, so two windows can show two different buddies. A new window shows your last pick.
 
+## Trophies
+
+Rare moments of your work earn trophies, not every five minutes. Each one brings a gold cup and fireworks in its
+rarity color, a toast says what it was for, and the card shows your shelf. `/buddy trophies` lists them all.
+
+![A trophy: a gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](docs/trophy.gif)
+
+| Trophy | Rarity | For |
+| --- | --- | --- |
+| Night Owl | rare | a commit between 2 and 5 at night |
+| Friday Deploy | rare | a commit on a Friday after 6 in the evening |
+| Comeback | rare | green tests soon after three failures in a row |
+| Ball Champ | rare | ten balls caught in one minute |
+| Regular | epic | a snack every day for a week |
+| All Grown Up | epic | a buddy at level 10 |
+| Shiny! | legendary | a shiny buddy in your nest |
+| Legend | legendary | a legendary buddy in your nest |
+
+And six secret ones: the list shows only their rarity until you find them. The code is open, so you can look them
+up, but finding them yourself is more fun.
+
 ## What else it does
 
 ![It naps under a sakura, purrs when petted, lands on a rocket flame, slides on its belly, juggles and blows bubbles](docs/moments.png)
@@ -147,6 +168,7 @@ Only for what a click cannot do:
 | --- | --- |
 | `/buddy` | its full card in the chat: portrait, mood, level, belly, love, rarity, stats, personality |
 | `/buddy feed` | give it a berry |
+| `/buddy trophies` | the trophies you found and the ones still open |
 | `/buddy name <name>` | rename it |
 | `/buddy on` | bring it back after `hide`, which hides it in the current session only |
 | `/buddy help` | the list of clicks and commands |
@@ -157,8 +179,9 @@ Only for what a click cannot do:
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
 - **What it keeps, on this machine only,** in the plugin store of Claude Code: your buddies with their names, stats,
-  xp, belly and love, which buddy each of your last 50 sessions shows, the theme and the hat switch. Entries an older
-  version kept are removed when a session starts
+  xp, belly and love, which buddy each of your last 50 sessions shows, the trophies you found with their dates, the
+  last day it ate and how many days in a row, the theme and the hat switch. Entries an older version kept are removed
+  when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
@@ -175,7 +198,8 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
 - `hooks/band-client.tsx` animates the strip at 20 frames a second: walking, chasing the cursor, catching the ball,
   dragging. A frame that looks like the last one is not redrawn, so an idle buddy costs little
 - `hooks/scene.ts` paints everything with half-block pixels, two pixels per terminal cell
-- `hooks/species.ts` holds the sprites, `hooks/buddy.ts` the stats and the card, `hooks/lines.ts` what it says
+- `hooks/species.ts` holds the sprites, `hooks/buddy.ts` the stats and the card, `hooks/lines.ts` what it says,
+  `hooks/trophies.ts` the trophies and when each one is earned
 
 ## Development
 

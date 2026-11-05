@@ -54,6 +54,7 @@ export type View = {
     food: FoodView | null
     isShiny: boolean
     vibe: Vibe
+    trophy: TrophyView | null
 }
 
 export type Leave = { species: SpeciesId; age: number }
@@ -98,6 +99,10 @@ export type Season = 'winter' | 'halloween' | null
 export type Toy = { kind: 'ball' | 'shuriken'; x: number; y: number; age: number }
 export type FoodView = { kind: SnackKind; x: number; y: number; eatenAge: number | null }
 export type Spark = { x: number; y: number; age: number }
+
+export type TrophyView = { rarity: Rarity; age: number }
+
+export const TROPHY_MS = 3600
 
 export type Jump = { age: number; fromX: number; toX: number }
 export type ActionKind = 'swing' | 'slice' | 'fruit' | 'trick'
@@ -912,6 +917,82 @@ const drawSpark = (c: Canvas, v: View): void => {
     }
 }
 
+const CUP = ['.ggggg.', 'hgwgggh', '..ggg..', '...g...', '..ddd..']
+const CUP_W = 7
+const CUP_COLORS: Record<string, number> = { g: 0xffcf3f, h: 0xd9a21f, w: WHITE, d: 0xa8741a }
+const BURSTS: Record<Rarity, number> = { common: 2, uncommon: 2, rare: 3, epic: 4, legendary: 6 }
+const SPARKLES: Record<Rarity, number> = { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 5 }
+const BURST_GAP_MS = 380
+const LAUNCH_MS = 240
+const BURST_MS = 800
+const TROPHY_FADE_MS = 600
+
+const burstColorOf = (rarity: Rarity, k: number, d: number): number => {
+    if (rarity === 'legendary') {
+        return cycle(RAINBOW, d + k)
+    }
+
+    return d % 2 === 0 ? rarityOf(rarity).color : WHITE
+}
+
+const drawFireworks = (c: Canvas, v: View, trophy: TrophyView, x0: number): void => {
+    for (let k = 0; k < BURSTS[trophy.rarity]; k++) {
+        const age = trophy.age - k * BURST_GAP_MS
+        const way = k % 2 === 0 ? 1 : -1
+        const cx = Math.max(3, Math.min(v.cols - 4, x0 + SPRITE_W / 2 + way * (10 + Math.round(hash(k * 3 + 1) * 12))))
+        const cy = 1 + Math.round(hash(k * 3 + 2) * 2)
+        if (age >= 0 && age < LAUNCH_MS) {
+            dot(c, cx, 5 - (age / LAUNCH_MS) * (5 - cy), 0xffe9a8)
+        }
+        const p = (age - LAUNCH_MS) / BURST_MS
+        if (p < 0 || p > 1) {
+            continue
+        }
+        if (p < 0.15) {
+            dot(c, cx, cy, WHITE)
+        }
+        const r = 1 + p * 4.5
+        for (let d = 0; d < 12; d++) {
+            const angle = (d / 12) * Math.PI * 2
+            dot(c, cx + Math.cos(angle) * r * 1.8, cy + Math.sin(angle) * r * 0.7, scale(burstColorOf(trophy.rarity, k, d), 1 - p * 0.6))
+        }
+    }
+    const beat = Math.floor(trophy.age / 90)
+    for (let j = 0; j < SPARKLES[trophy.rarity] && trophy.age < TROPHY_MS - TROPHY_FADE_MS; j++) {
+        const x = Math.floor(hash(beat * 7 + j) * v.cols)
+        if (x >= x0 - 2 && x <= x0 + SPRITE_W + 1) {
+            continue
+        }
+        const glyph = cycle(['✦', '+', '·'], beat + j)
+        write(c, x, Math.floor(hash(beat * 7 + j + 3) * ROWS), glyph, trophy.rarity === 'legendary' ? cycle(RAINBOW, beat + j) : rarityOf(trophy.rarity).color)
+    }
+}
+
+const drawCup = (c: Canvas, v: View, trophy: TrophyView, x0: number): void => {
+    const isRight = bubbleSideOf(c, v, x0).isLeft
+    const x = isRight ? x0 + SPRITE_W + 2 : x0 - CUP_W - 2
+    const rise = Math.round(Math.max(0, 1 - trophy.age / 300) * CUP.length)
+    const alpha = trophy.age > TROPHY_MS - TROPHY_FADE_MS ? (TROPHY_MS - trophy.age) / TROPHY_FADE_MS : 1
+    const glint = Math.floor(trophy.age / 120) % 5
+    CUP.forEach((line, dy) => [...line].forEach((cell, dx) => {
+        const color = dy === 1 && dx === glint + 1 ? WHITE : cell === 'w' ? CUP_COLORS.g : CUP_COLORS[cell]
+        if (color !== undefined) {
+            dot(c, x + dx, 1 + dy + rise, scale(color, alpha))
+        }
+    }))
+    if (Math.floor(trophy.age / 400) % 2 === 0 && alpha === 1) {
+        write(c, isRight ? x + CUP_W : x - 1, 0, '✦', 0xffe9a8)
+    }
+}
+
+const drawTrophy = (c: Canvas, v: View, x0: number): void => {
+    if (v.trophy === null || v.trophy.age < 0 || v.trophy.age > TROPHY_MS) {
+        return
+    }
+    drawFireworks(c, v, v.trophy, x0)
+    drawCup(c, v, v.trophy, x0)
+}
+
 const HATS: Record<'winter' | 'halloween', { art: readonly string[]; colors: Record<string, number> }> = {
     winter: { art: ['..rrrrp.', '.tttttt.'], colors: { r: 0xd62828, p: 0xf5f5f5, t: 0xf5f5f5 } },
     halloween: { art: ['...ppw..', '.ppoopp.'], colors: { p: 0x6b3fa0, w: 0x4a2b70, o: 0xff8a2a } },
@@ -1377,6 +1458,7 @@ export const paint = (v: View): Uint32Array => {
         drawTree(c, v)
     }
     drawMenu(c, v)
+    drawTrophy(c, v, x0)
     if (v.leave !== null && isLeaving && !isJumping) {
         LEAVES[v.leave.species](c, { ...v, species: v.leave.species }, x0, v.leave.age)
     }
@@ -1419,7 +1501,7 @@ export const portraitOf = (species: SpeciesId, rarity: Rarity, isShiny: boolean,
     const still: View = {
         t, cols: PORTRAIT_COLS, species, rarity, mood: 'idle', moodAge: 0, pose: { x: 0, isFacingLeft: false, isWalking: false, lookX: 0, lift: 0 },
         bubble: null, agents: 0, hatchAge: null, hearts: [], rows: PORTRAIT_ROWS, jump: null, action: null, toy: null, spark: null, season,
-        menu: null, nap: null, trail: [], leave: null, food: null, isShiny, vibe: 'content',
+        menu: null, nap: null, trail: [], leave: null, food: null, isShiny, vibe: 'content', trophy: null,
     }
     const c = canvasOf(PORTRAIT_COLS, PORTRAIT_ROWS)
     drawSprite(c, still, 0, 2)
