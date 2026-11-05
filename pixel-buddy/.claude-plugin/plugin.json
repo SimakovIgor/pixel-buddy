@@ -1,7 +1,7 @@
 {
   "name": "pixel-buddy",
   "displayName": "Pixel Buddy",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "A pixel pet for your Claude Code footer: it hatches, eats what your work drops, levels up, earns rare trophies, does tricks, naps when you are away and plays on clicks",
   "license": "MIT",
   "author": {

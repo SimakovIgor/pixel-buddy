@@ -517,22 +517,50 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
 
 const CASE_GOLD = 0xffcf3f
 
-const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: number): RenderElement | null => {
-    if (caseAt === null || e.surface !== 'terminal') {
-        return null
-    }
-    const { Box, Text, Raster } = $.ui.resolve(e)
-    const shown = trophyCaseOf(found, Math.min(width, 92) - 4)
-    const latest = TROPHIES.filter(one => found[one.id] !== undefined).sort((a, b) => (found[b.id] ?? 0) - (found[a.id] ?? 0))[0]
+const CASE_CELL = 16
+
+const badgeTextOf = ($: EngineInterface, e: ResolveInput, width: number): RenderElement => {
+    const { Box, Text } = $.ui.resolve(e)
+    const perRow = Math.max(2, Math.min(7, Math.floor((width - 4) / CASE_CELL)))
+    const rows = Array.from({ length: Math.ceil(TROPHIES.length / perRow) }, (_, i) => TROPHIES.slice(i * perRow, (i + 1) * perRow))
 
     return (
-        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown.columns + 4}>
+        <Box key="trophy-badges" flexDirection="column">
+            {rows.map((row, r) => (
+                <Box key={`row-${r}`} flexDirection="row">
+                    {row.map(one => {
+                        if (found[one.id] !== undefined) {
+                            return <Box key={one.id} width={CASE_CELL}><Text color={hexOf(rarityOf(one.rarity).color)}>{one.emoji} {one.label}</Text></Box>
+                        }
+
+                        return <Box key={one.id} width={CASE_CELL}><Text dimColor>{one.isSecret ? '?  ???' : `○  ${one.label}`}</Text></Box>
+                    })}
+                </Box>
+            ))}
+        </Box>
+    )
+}
+
+const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: number): RenderElement | null => {
+    if (caseAt === null) {
+        return null
+    }
+    const { Box, Text } = $.ui.resolve(e)
+    const room = Math.min(width, 92)
+    const shown = e.surface === 'terminal' ? trophyCaseOf(found, room - 4) : null
+    const latest = TROPHIES.filter(one => found[one.id] !== undefined).sort((a, b) => (found[b.id] ?? 0) - (found[a.id] ?? 0))[0]
+    const badges = e.surface === 'terminal' && shown !== null
+        ? $.ui.resolve(e).Raster({ key: 'trophy-badges', columns: shown.columns, rows: shown.rows, cells: encode(shown.cells) })
+        : badgeTextOf($, e, room)
+
+    return (
+        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown === null ? room : shown.columns + 4}>
             <Box flexDirection="row">
                 <Text color={hexOf(CASE_GOLD)} weight="bold">trophies </Text>
                 <Text>{countOf(found)} of {TROPHIES.length}</Text>
                 <Text dimColor>{latest === undefined ? ' · rare moments of your work earn them' : ` · the latest: ${latest.name}`} · menu → share shows them off</Text>
             </Box>
-            {Raster({ key: 'trophy-badges', columns: shown.columns, rows: shown.rows, cells: encode(shown.cells) })}
+            {badges}
         </Box>
     )
 }

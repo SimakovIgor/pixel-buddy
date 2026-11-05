@@ -1324,3 +1324,23 @@ test('/buddy trophies and trophies in the menu open the case above the prompt, a
     expect(fromMenu).toBeTruthy()
     expect(toasts[0]).toBe('Trophy case opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
 })
+
+test('on the desktop the trophy case is a grid of emoji and names, found ones in color, open ones gray, secret ones a question mark', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE }, trophies: { 'night-owl': 1 } })
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'desktop' })
+    await $.command.run({ command: 'buddy', args: 'trophies' } as Parameters<typeof $.command.run>[0])
+    await above.redraw()
+    const shown = JSON.stringify(await above.find({ key: 'trophy-case' }) ?? null)
+    await above.unmount()
+
+    expect(shown).toContain('🦉 Night Owl')
+    expect(shown).toContain('"color":"#4aa8ff"')
+    expect(shown).toContain('○  Friday')
+    expect(shown).toContain('?  ???')
+    expect(shown).not.toContain('1337')
+    expect(shown).not.toContain('"type":"Raster"')
+})

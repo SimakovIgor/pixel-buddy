@@ -88,7 +88,8 @@ Six more are secret: they show a question mark until you find them. The code is 
 is more fun.
 
 `trophies` in the menu or `/buddy trophies` opens your trophy case above the prompt. Each trophy is a pixel badge:
-round for rare, a hexagon for epic, a shield for legendary.
+round for rare, a hexagon for epic, a shield for legendary. In the desktop app the case shows each trophy's emoji
+instead.
 
 ![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](docs/trophy-case.png)
 
