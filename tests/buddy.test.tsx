@@ -897,7 +897,7 @@ test('the right click menu starts with a summary line, and card opens one framed
     expect(closed).toBeUndefined()
 })
 
-test('a session in a subfolder gets the buddy of its project, and a pick there changes the project, not the subfolder', async ($, on) => {
+test('a new window shows the last pick, a pick in a window stays with that window after resume', async ($, on) => {
     stubEngine(on)
     const store: Record<string, unknown> = {
         main: 1,
@@ -906,31 +906,31 @@ test('a session in a subfolder gets the buddy of its project, and a pick there c
         'pet:2': { ...NOODLE, hatchedAt: 2, name: 'Byte', species: 'robot' },
     }
     storeOn(on, store)
-    on('session.root', () => ({ value: '/work/api/service/src' }))
+    let session = 'window-a'
+    on('session.id', () => ({ value: session }))
     on('ui.invalidate', () => ({ value: undefined }))
+    const cardNow = async () => (await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])).text
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+    const fresh = await cardNow()
     const ui = await $.ui.mount(BAND)
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
     await ui.post({ type: 'menu', key: 'nest' }, { in: 'buddy-band' })
     const nestPage = JSON.stringify(await ui.drawn({ in: 'buddy-band' }))
-    await ui.post({ type: 'menu', key: 'pick:1' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'pick:2' }, { in: 'buddy-band' })
     await ui.unmount()
-
-    expect(card.text).toContain('Byte · robot')
-    expect(nestPage).toContain('"api"')
-    expect(store.homes).toEqual({ '/work/api': 1 })
-    expect(store.main).toBe(1)
-})
-
-test('a folder nobody picked a buddy for shows the last pick', async ($, on) => {
-    stubEngine(on)
-    storeOn(on, { main: 1, homes: { '/work/api': 2 }, 'pet:1': { ...NOODLE, hatchedAt: 1, name: 'Pixel', species: 'cat' }, 'pet:2': { ...NOODLE, hatchedAt: 2, name: 'Byte', species: 'robot' } })
-    on('session.root', () => ({ value: '/work/web' }))
-
+    session = 'window-b'
+    store.main = 1
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+    const other = await cardNow()
+    session = 'window-a'
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const resumed = await cardNow()
 
-    expect(card.text).toContain('Pixel · cat')
+    expect(fresh).toContain('Pixel · cat')
+    expect(nestPage).toContain('"window"')
+    expect(other).toContain('Pixel · cat')
+    expect(resumed).toContain('Byte · robot')
+    expect(store.seats).toEqual({ 'window-a': 2, 'window-b': 1 })
+    expect(store.homes).toBeUndefined()
 })

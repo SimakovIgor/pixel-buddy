@@ -65,8 +65,8 @@ Eight species. A buddy hatches with a name, a rarity and five stats, all rolled 
 Every buddy you hatch stays in your nest with its level, belly and love: `buddies` in the menu brings any of them back
 or hatches a new egg, up to 12. Nobody is lost, and a buddy resting in the nest does not get hungry or lonely.
 
-Each project keeps its own buddy. Pick one in a folder and every session there, subfolders included, shows it: a ninja
-for the backend, a cat for the frontend. A folder you never picked for shows your last pick.
+Each window keeps its own buddy: pick one in a window and it stays there, also after `claude --resume`. Two windows can
+show two different buddies, so you tell them apart at a glance. A new window shows your last pick.
 
 ## What it does
 
@@ -125,7 +125,7 @@ Only for what a click cannot do:
 - **Nothing leaves your machine.** No network calls, no model calls, no tokens spent
 - **It runs no programs and reads no files**
 - **What it keeps, on this machine only,** in the plugin store of Claude Code: your buddies with their names, stats,
-  xp, belly and love, the paths of the folders you picked a buddy for, the theme and the hat switch. Session entries an older version kept are removed when a session starts
+  xp, belly and love, which buddy each of your last 50 sessions shows, the theme and the hat switch. Session entries an older version kept are removed when a session starts
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only to
   react, for example to a Bash command that runs tests, and keeps none of them
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,

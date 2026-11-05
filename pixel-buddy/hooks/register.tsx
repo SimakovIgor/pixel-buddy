@@ -13,7 +13,8 @@ import type { SpeciesId } from './species'
 
 const CLIENT_KEY = 'buddy-band'
 const PET_PREFIX = 'pet:'
-const HOMES_KEY = 'homes'
+const SEATS_KEY = 'seats'
+const SEATS_KEPT = 50
 const MAIN_KEY = 'main'
 const LEGACY_BUDDY = 'buddy'
 const LEGACY_NEST = 'nest'
@@ -95,8 +96,8 @@ let messages = 0
 let theme: Theme = 'auto'
 let menuPage: 'main' | 'nest' | 'species' | null = null
 let nest: Buddy[] = []
-let root = ''
-let homes: Record<string, number> = {}
+let sessionId = ''
+let seats: Record<string, number> = {}
 let mainId: number | null = null
 let arrivalLine: string | null = null
 let snacks: Array<{ kind: SnackKind; at: number }> = []
@@ -133,7 +134,7 @@ const menuOf = (): Menu | null => {
 
         return {
             items: [...items, { key: isFull ? 'full' : 'new', label: isFull ? 'nest is full' : '+ new egg', isOn: false }, { key: 'back', label: '←', isOn: false }],
-            header: `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}. Pick one for ${placeName()}`,
+            header: `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}. Pick one for this window`,
         }
     }
     const items: MenuItem[] = [
@@ -150,7 +151,7 @@ const menuOf = (): Menu | null => {
 
 let startedAt = 0
 
-const LEGACY_KEYS = ['lang', 'tropic']
+const LEGACY_KEYS = ['lang', 'tropic', 'homes']
 
 const dropLegacyKeys = async ($: EngineInterface): Promise<void> => {
     const keys = (await $.store.keys()).filter(key => key.startsWith(SESSION_PREFIX) || LEGACY_KEYS.includes(key))
@@ -159,33 +160,22 @@ const dropLegacyKeys = async ($: EngineInterface): Promise<void> => {
 
 const petKey = (id: number): string => `${PET_PREFIX}${id}`
 
-const pathsUp = (path: string): string[] => {
-    const parts = path.replace(/\\/g, '/').split('/').filter(part => part !== '')
-    const lead = path.startsWith('/') ? '/' : ''
+const wantedId = (): number | null => seats[sessionId] ?? mainId
 
-    return parts.map((_, i) => lead + parts.slice(0, parts.length - i).join('/'))
+const readSeats = async ($: EngineInterface): Promise<Record<string, number>> => {
+    const stored = await $.store.get(SEATS_KEY).catch(() => undefined)
+    const isSeats = typeof stored === 'object' && stored !== null && !Array.isArray(stored) && Object.values(stored).every(id => typeof id === 'number')
+
+    return isSeats ? (stored as Record<string, number>) : {}
 }
 
-const homeOf = (): string | undefined => pathsUp(root).find(path => homes[path] !== undefined)
-
-const wantedId = (): number | null => {
-    const home = homeOf()
-
-    return home === undefined ? mainId : homes[home] ?? mainId
-}
-
-const placeName = (): string => {
-    const home = homeOf() ?? root
-    const name = home.replace(/\\/g, '/').split('/').filter(part => part !== '').pop()
-
-    return name === undefined ? 'every folder' : `${name} and its subfolders`
-}
-
-const readHomes = async ($: EngineInterface): Promise<Record<string, number>> => {
-    const stored = await $.store.get(HOMES_KEY).catch(() => undefined)
-    const isHomes = typeof stored === 'object' && stored !== null && !Array.isArray(stored) && Object.values(stored).every(id => typeof id === 'number')
-
-    return isHomes ? (stored as Record<string, number>) : {}
+const seatAt = async ($: EngineInterface, id: number): Promise<void> => {
+    if (sessionId === '') {
+        return
+    }
+    const others = Object.entries(await readSeats($)).filter(([seat]) => seat !== sessionId)
+    seats = Object.fromEntries([...others.slice(-(SEATS_KEPT - 1)), [sessionId, id]])
+    await $.store.set(SEATS_KEY, seats)
 }
 
 const readMain = async ($: EngineInterface): Promise<number | null> => {
@@ -228,22 +218,10 @@ const rest = (one: Buddy, now: number): Buddy =>
 const wake = (one: Buddy, now: number): Buddy =>
     ({ ...one, belly: { value: one.belly?.value ?? 60, at: now }, affection: { value: one.affection?.value ?? 60, at: now } })
 
-const syncShared = async ($: EngineInterface, now: number): Promise<void> => {
+const syncShared = async ($: EngineInterface): Promise<void> => {
     const version = buddyVersion
-    homes = await readHomes($)
-    mainId = await readMain($)
-    const id = wantedId()
-    const isMoved = buddy !== null && id !== null && id !== buddy.hatchedAt
-    const stored = buddy === null ? undefined : knownOf((await $.store.get(petKey(isMoved ? id ?? 0 : buddy.hatchedAt)).catch(() => undefined)) as Buddy | undefined)
-    const isChangedHere = version !== buddyVersion
-    if (!isChangedHere && stored !== undefined && buddy !== null && isMoved) {
-        leave = { species: buddy.species, at: now }
-        nest = [...nest.filter(one => one.hatchedAt !== stored.hatchedAt), buddy]
-        buddy = wake(stored, now)
-        snacks = []
-        hatchAt = now + LEAVE_MS
-        arrivalLine = `${stored.name} is here!`
-    } else if (!isChangedHere && stored !== undefined && buddy !== null) {
+    const stored = buddy === null ? undefined : knownOf((await $.store.get(petKey(buddy.hatchedAt)).catch(() => undefined)) as Buddy | undefined)
+    if (version === buddyVersion && stored !== undefined && buddy !== null && stored.hatchedAt === buddy.hatchedAt) {
         buddy = { ...buddy, name: stored.name, xp: stored.xp ?? buddy.xp, belly: stored.belly ?? buddy.belly, affection: stored.affection ?? buddy.affection }
     }
     theme = await readTheme($)
@@ -417,7 +395,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                     <Text>love  {bar(love)} {love}%</Text>
                 </Box>
             </Box>
-            <Text dimColor>lives in {placeName()} · {nest.length + 1} in your nest · card in the menu closes it</Text>
+            <Text dimColor>this window's buddy · {nest.length + 1} in your nest · card in the menu closes it</Text>
         </Box>
     )
 }
@@ -622,7 +600,7 @@ const frame = async ($: EngineInterface): Promise<void> => {
         await refreshAgents($)
     }
     if (frames % SYNC_EVERY_FRAMES === 0) {
-        await syncShared($, now)
+        await syncShared($)
     }
     if (buddy === null || !isShown(now)) {
         return
@@ -673,8 +651,8 @@ const knownOf = (stored: Buddy | undefined): Buddy | undefined => {
 }
 
 const loadBuddy = async ($: EngineInterface, now: number): Promise<void> => {
-    root = await $.session.root().catch(() => '')
-    homes = await readHomes($)
+    sessionId = await $.session.id().catch(() => '')
+    seats = await readSeats($)
     mainId = await readMain($)
     const found = await readPets($)
     const migrated = found.length > 0 ? found : await migrate($)
@@ -689,6 +667,9 @@ const loadBuddy = async ($: EngineInterface, now: number): Promise<void> => {
             mainId = chosen.hatchedAt
             await $.store.set(MAIN_KEY, mainId)
         }
+        if (seats[sessionId] !== chosen.hatchedAt) {
+            await seatAt($, chosen.hatchedAt)
+        }
 
         return
     }
@@ -698,6 +679,7 @@ const loadBuddy = async ($: EngineInterface, now: number): Promise<void> => {
     mainId = buddy.hatchedAt
     await $.store.set(petKey(buddy.hatchedAt), buddy)
     await $.store.set(MAIN_KEY, mainId)
+    await seatAt($, buddy.hatchedAt)
 }
 
 const swapTo = async ($: EngineInterface, now: number, next: Buddy, isNew: boolean): Promise<void> => {
@@ -711,15 +693,13 @@ const swapTo = async ($: EngineInterface, now: number, next: Buddy, isNew: boole
     hatchAt = leave === null ? now : now + LEAVE_MS
     isNewborn = isNew
     bubble = null
-    const home = homeOf() ?? root
-    homes = home === '' ? await readHomes($) : { ...(await readHomes($)), [home]: next.hatchedAt }
     mainId = next.hatchedAt
     if (previous !== null) {
         await $.store.set(petKey(previous.hatchedAt), previous)
     }
     await $.store.set(petKey(next.hatchedAt), next)
-    await $.store.set(HOMES_KEY, homes)
     await $.store.set(MAIN_KEY, mainId)
+    await seatAt($, next.hatchedAt)
 }
 
 const bringBack = async ($: EngineInterface, now: number, hatchedAt: number): Promise<void> => {
@@ -753,7 +733,7 @@ const help = (): string => [
     '',
     'Buddies: every buddy you hatch stays in your nest with its level, belly and love.',
     'Pick one in the menu to bring it back, or hatch a new egg. Nobody is lost.',
-    'Each project keeps the buddy you picked there, subfolders included. Other folders show your last pick.',
+    'Each window keeps the buddy you picked in it, /resume included. A new window shows your last pick.',
     '',
     'It eats what your work drops: a cookie for each answer from Claude, a fish for green tests,',
     'a cake for a commit or a finished plan. Snacks give it xp, levels come from xp.',
