@@ -12,6 +12,7 @@ import { SPECIES, speciesOf } from './species'
 import type { SpeciesId } from './species'
 import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, foundOf, listOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
 import type { Found, TrophyId } from './trophies'
+import { shareOf } from './share'
 
 const CLIENT_KEY = 'buddy-band'
 const PET_PREFIX = 'pet:'
@@ -129,6 +130,7 @@ let talliedDay = ''
 const ALIASES: Record<string, string> = {
     rename: 'name',
     trophy: 'trophies',
+    brag: 'share',
 }
 
 const speciesFor = (word: string | undefined) => (word === undefined ? undefined : SPECIES.find(one => one.id === word.toLowerCase()))
@@ -159,6 +161,7 @@ const menuOf = (): Menu | null => {
         cardAt === null ? { key: 'card', label: 'card', isOn: false } : { key: 'card-close', label: 'hide card', isOn: true },
         { key: 'feed', label: 'feed', isOn: false },
         { key: 'nest', label: 'buddies', isOn: false },
+        { key: 'share', label: 'share', isOn: false },
         { key: 'theme', label: `theme: ${theme}`, isOn: theme !== 'auto' && theme !== 'off' },
         { key: 'hide', label: 'hide', isOn: false },
         { key: 'close', label: '×', isOn: false },
@@ -843,36 +846,24 @@ export const isTestRun = (command: string): boolean => !command.includes('|') &&
 const help = (): string => [
     'Your buddy lives on clicks:',
     '  click             pet it',
-    '  double click      jump',
+    '  double click      its own move',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu with a summary line: card, feed, buddies, theme (calendar, winter, halloween, off), hide',
+    '  right click       menu: card, feed, buddies, share, theme, hide',
     '',
-    'Buddies: every buddy you hatch stays in your nest with its level, belly and love.',
-    'Pick one in the menu to bring it back, or hatch a new egg. Nobody is lost.',
-    'Each window keeps the buddy you picked in it, also after claude --resume. A new window shows your last pick.',
+    'It eats what your work drops: a cookie for an answer, a fish for green tests, a cake for a commit.',
+    'Snacks give xp and levels. Every buddy you hatch stays in your nest, each window keeps its own.',
+    'Rare moments earn trophies, six of them secret.',
     '',
-    'It eats what your work drops: a cookie for each answer from Claude, a fish for green tests,',
-    'a cake for a commit or a finished plan. Snacks give it xp, levels come from xp.',
-    'It never starves: a hungry buddy just asks for a berry from the menu.',
-    '',
-    'Its mood: joyful after good news, tired after two hours of work without a break,',
-    'lonely when nobody pets it, hungry without snacks. The card says why and what helps.',
-    '',
-    'Trophies come from rare moments: a commit deep in the night, ten balls caught in a minute, and more.',
-    'Some are secret. Each one brings fireworks, /buddy trophies lists them.',
-    '',
-    'Commands, for what a click cannot do:',
-    '  /buddy               its full card: portrait, mood, level, belly, love, stats, personality',
-    '  /buddy name <name>   rename it',
-    '  /buddy feed          give it a berry',
+    'Commands:',
+    '  /buddy               its full card with stats and personality',
     '  /buddy trophies      the trophies you found and the ones still open',
-    '  /buddy on            bring it back in this session after hide',
-    '  /buddy help          this list',
-    '',
-    'The menu as commands, if you prefer typing:',
+    '  /buddy share         copy a card of your buddy to show it off',
+    '  /buddy name <name>   rename it',
+    '  /buddy feed          a berry',
+    '  /buddy on            bring it back after hide',
     '  /buddy hatch [cat, duck, ghost, octopus, axolotl, robot, ninja, penguin]',
-    '  /buddy hat · /buddy theme [auto, winter, halloween, off] · /buddy off',
+    '  /buddy theme [auto, winter, halloween, off] · /buddy off',
 ].join('\n')
 
 const speciesList = (): string => SPECIES.map(one => one.id).join(', ')
@@ -894,15 +885,20 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     if (arg === 'trophies') {
         return listOf(found)
     }
+    if (arg === 'share') {
+        const text = shareOf(current, found)
+        const { isCopied } = await $.ui.copy({ text })
+
+        return `${isCopied ? 'Copied, paste it in any chat' : 'Copy it from here'}:\n\n${text}`
+    }
     if (arg === 'pet') {
         pet(now)
 
         return `${current.name} is happy`
     }
-    if (arg === 'theme' || arg === 'hat') {
+    if (arg === 'theme') {
         const wanted = rest[0]?.toLowerCase()
-        const toggled = arg === 'hat' ? (theme === 'winter' ? 'auto' : 'winter') : null
-        theme = isTheme(wanted) ? wanted : toggled ?? THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length] ?? 'auto'
+        theme = isTheme(wanted) ? wanted : THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length] ?? 'auto'
         await $.store.set(THEME_KEY, theme)
         $.ui.invalidate('ui.render')
 
@@ -912,14 +908,6 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
             halloween: 'Boo! Witch hat on',
             off: 'No theme',
         }[theme]
-    }
-    if (arg === 'fruit') {
-        if (!isNinja()) {
-            return 'Only a ninja slices fruit: /buddy hatch ninja'
-        }
-        action = { kind: 'fruit', at: now }
-
-        return 'Hai!'
     }
     if (arg === 'jump') {
         return startJump(now) ? 'Jump!' : 'Not enough room to jump'
@@ -987,6 +975,11 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     } else if (key === 'feed') {
         menuPage = null
         feedByHand(now)
+    } else if (key === 'share' && buddy !== null) {
+        menuPage = null
+        const { isCopied } = await $.ui.copy({ text: shareOf(buddy, found) })
+        sayText(isCopied ? 'show me off!' : 'try /buddy share', now)
+        $.ui.toast(isCopied ? `A card of ${buddy.name} is on your clipboard: paste it in any chat to show it off` : 'Could not copy here, /buddy share prints the card')
     } else if (key === 'nest') {
         menuPage = 'nest'
         nest = (await readPets($)).filter(one => one.hatchedAt !== buddy?.hatchedAt)

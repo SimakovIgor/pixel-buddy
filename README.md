@@ -2,9 +2,9 @@
 
 **Ship code, feed your buddy.**
 
-A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, grows a
-level at a time, shows its mood, does tricks while Claude thinks, naps when you are away and plays with you on clicks.
-Every buddy you hatch stays in your nest, and nothing leaves your machine.
+A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, levels up,
+earns rare trophies, does tricks while Claude thinks, naps when you are away and plays with you on clicks. Every buddy
+you hatch stays in your nest, and nothing leaves your machine.
 
 ![An answer from Claude drops a cookie, the ninja walks over and eats it. A commit drops a cake and brings level 3](pixel-buddy/docs/feed.gif)
 
@@ -16,9 +16,8 @@ At the prompt of a terminal session:
 /plugin install pixel-buddy --marketplace SimakovIgor/pixel-buddy
 ```
 
-Answer `y` to add the marketplace, then pick a scope. From a shell it is
-`claude plugin install pixel-buddy --marketplace SimakovIgor/pixel-buddy`. To update it:
-`claude plugin update pixel-buddy@simakovigor`. To remove it: `/plugin uninstall pixel-buddy`.
+Answer `y` and pick the user scope to have it in every session. Update and removal are in the plugin's
+[README](pixel-buddy/README.md#install).
 
 ## A quick look
 
@@ -31,9 +30,9 @@ A right click opens the menu with a summary line. `card` shows its card in a fra
 ![A right click opens the menu with the summary line, card opens the buddy's card in a frame above the prompt](pixel-buddy/docs/card.gif)
 
 Rare moments of your work earn trophies: a commit deep in the night, a snack every day for a week, a legendary egg.
-Some are secret. Each one brings a gold cup and fireworks:
+Six are secret. Each one brings a gold cup and fireworks, and `share` copies a card to show it off in any chat:
 
-![A trophy: a gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](pixel-buddy/docs/trophy.gif)
+![A gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](pixel-buddy/docs/trophy.gif)
 
 Eight species, and each one comes and goes in its own way:
 

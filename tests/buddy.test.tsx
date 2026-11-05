@@ -6,6 +6,7 @@ import { isTestRun } from './register'
 import { paint } from './scene'
 import { SPECIES } from './species'
 import { commitTrophiesAt, nextTally } from './trophies'
+import { shareOf } from './share'
 import type { View } from './scene'
 
 const BAND = {
@@ -159,28 +160,16 @@ test('the buddy turns to the cursor and runs after it along the band', async ($,
     await ui.unmount()
 })
 
-test('/buddy fruit, with a comma still runs the command', async ($, on) => {
-    stubEngine(on)
-    on('store.get', () => ({ value: { name: 'Mochi', species: 'ninja', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } }))
-
-    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const result = await $.command.run({ command: 'buddy', args: 'Fruit,' } as Parameters<typeof $.command.run>[0])
-
-    expect(result.text).toBe('Hai!')
-})
-
-test('/buddy hat puts the Santa hat on now and takes it off', async ($, on) => {
+test('/buddy theme with a capital and a comma still runs the command', async ($, on) => {
     stubEngine(on)
     on('store.get', () => ({ value: undefined }))
     on('store.set', () => ({ value: undefined }))
     on('ui.invalidate', () => ({ value: undefined }))
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-    const put = await $.command.run({ command: 'buddy', args: 'hat on' } as Parameters<typeof $.command.run>[0])
-    const off = await $.command.run({ command: 'buddy', args: 'hat' } as Parameters<typeof $.command.run>[0])
+    const result = await $.command.run({ command: 'buddy', args: 'Theme, winter' } as Parameters<typeof $.command.run>[0])
 
-    expect(put.text).toBe('Santa hat on, snow is falling')
-    expect(off.text).toBe('Theme follows the calendar')
+    expect(result.text).toBe('Santa hat on, snow is falling')
 })
 
 test('a caught ball makes the buddy answer in a bubble', async ($, on) => {
@@ -1070,7 +1059,7 @@ test('a commit deep in the night earns Night Owl once: a toast, fireworks, then 
     await ui.unmount()
 
     expect(trophiesIn(store)).toEqual(['night-owl'])
-    expect(toasts).toEqual(['Trophy: Night Owl, rare, for a commit between 2 and 5 at night. 1 of 14 found, /buddy trophies lists them'])
+    expect(toasts).toEqual(['Trophy: Night Owl, rare, for a commit between 2 and 5 at night. 1 of 14 found. Menu → share to show it off'])
     expect(fireworks).toContain('"trophy":{"rarity":"rare"')
     expect(named).toContain('"text":"Night Owl!"')
 })
@@ -1245,4 +1234,44 @@ test('the snack that brings a buddy to level 10 earns All Grown Up', async ($, o
 
     expect(before).toEqual([])
     expect(trophiesIn(store)).toEqual(['grown'])
+})
+
+test('the share card draws the buddy in colored squares, says its rarity, level and trophies, and links the repo', () => {
+    const lines = shareOf({ ...NOODLE, name: 'Mochi', species: 'cat', rarity: 'rare', xp: 12 } as Buddy, { 'night-owl': 5, legend: 2 }).split('\n')
+    const grid = lines.slice(1, 7)
+
+    expect(lines[0]).toBe('Mochi, my rare cat · level 2')
+    expect(grid.map(row => [...row].length)).toEqual([10, 10, 10, 10, 10, 10])
+    expect(grid[3]).toBe('⬜🟧⬛🟧🟧🟧🟧⬛🟧⬜')
+    expect(grid[5]).toBe('⬜⬜🟫🟫🟫🟫🟫🟫⬜⬜')
+    expect(lines[7]).toBe('🏆 2 of 14 trophies, the latest: Night Owl')
+    expect(lines[8]).toBe('Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy')
+    expect(shareOf({ ...NOODLE, species: 'ghost' } as Buddy, {}).split('\n')[2]).toBe('🟦🟦⬜⬜⬜⬜⬜⬜🟦🟦')
+})
+
+test('share in the menu puts the card on the clipboard and says so, /buddy share prints it when nothing could be copied', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    const toasts = toastsOn(on)
+    const copies: string[] = []
+    let isCopying = true
+    on('ui.copy', (_, e) => {
+        copies.push((e as { text: string }).text)
+
+        return { value: isCopying ? { isCopied: true } : { isCopied: false, reason: 'no-clipboard' } }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'share' }, { in: 'buddy-band' })
+    isCopying = false
+    const printed = await $.command.run({ command: 'buddy', args: 'share' } as Parameters<typeof $.command.run>[0])
+    await ui.unmount()
+
+    expect(copies).toHaveLength(2)
+    expect(copies[0]).toContain('Noodle, my common ninja · level 1')
+    expect(toasts).toEqual(['A card of Noodle is on your clipboard: paste it in any chat to show it off'])
+    expect(printed.text).toBe(`Copy it from here:\n\n${copies[1]}`)
 })

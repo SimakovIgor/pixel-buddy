@@ -143,14 +143,16 @@ const shineOf = (color: number): number => {
     return (nr << 16) | (ng << 8) | nb
 }
 
-const paletteOf = (v: View): Record<string, number> => {
-    const colors = speciesOf(v.species).colors
-    if (!v.isShiny) {
+export const colorsOf = (species: SpeciesId, isShiny: boolean): Record<string, number> => {
+    const colors = speciesOf(species).colors
+    if (!isShiny) {
         return colors
     }
 
     return Object.fromEntries(Object.entries(colors).map(([cell, color]) => [cell, FACE_CELLS.includes(cell) ? color : shineOf(color)]))
 }
+
+const paletteOf = (v: View): Record<string, number> => colorsOf(v.species, v.isShiny)
 const RED = 0xff4a5a
 const SLEEP = 0x8fa8ff
 const HEART = 0xff6b9a

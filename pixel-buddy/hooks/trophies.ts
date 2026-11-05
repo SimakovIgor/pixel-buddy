@@ -113,7 +113,7 @@ export const countOf = (found: Found): number => TROPHIES.filter(one => found[on
 export const toastOf = (id: TrophyId, found: Found): string => {
     const trophy = trophyOf(id)
 
-    return `Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found, /buddy trophies lists them`
+    return `Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found. Menu → share to show it off`
 }
 
 export const listOf = (found: Found): string => {
