@@ -906,7 +906,7 @@ test('the right click menu starts with a summary line, card opens one framed car
     expect(card).toContain('Noodle')
     expect(card).toContain('content: fed, petted, rested')
     expect(card).toContain('"borderStyle":"round"')
-    expect(toasts[0]).toBe('Card is above the prompt. Folded? Click "plugin panel hidden" to unfold')
+    expect(toasts[0]).toBe('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
     expect(again).toBeTruthy()
     expect(menuOpen).toContain('"label":"hide card"')
     expect(closed).toBeUndefined()

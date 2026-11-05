@@ -371,7 +371,7 @@ const openCard = ($: EngineInterface, now: number): void => {
     cardAt = now
     isCardInChat = false
     sayText('my card is up there ↑', now)
-    $.ui.toast('Card is above the prompt. Folded? Click "plugin panel hidden" to unfold')
+    $.ui.toast('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
 }
 
 const cardInChat = ($: EngineInterface, now: number): void => {
