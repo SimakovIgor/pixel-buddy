@@ -111,6 +111,8 @@ let joy: { what: string; at: number } | null = null
 let cardAt: number | null = null
 let cardDrawnAt = 0
 let isCardInChat = false
+let lastMenuKey = ''
+let aboveDraws = 0
 
 const ALIASES: Record<string, string> = {
     rename: 'name',
@@ -369,7 +371,7 @@ const toggleCard = (now: number): void => {
     cardAt = cardAt === null ? now : null
     isCardInChat = false
     if (cardAt !== null) {
-        sayText('my card is above the prompt ↑ (ctrl+x ctrl+a if folded)', now)
+        sayText('card is up ↑ ctrl+x ctrl+a', now)
     }
 }
 
@@ -858,6 +860,9 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
             `frames ${frames}, last frame ${Math.round(now - lastFrameAt)} ms ago`,
             `drawing: ${isClientMode ? 'client' : 'not drawn yet'}`,
             `clicks heard: ${messages}${lastMessage === '' ? '' : `, last: ${lastMessage}`}`,
+            `menu: ${lastMenuKey || 'never pressed'}`,
+            `card: ${cardAt === null ? 'closed' : `open ${Math.round((now - cardAt) / 1000)} s, ${cardDrawnAt >= cardAt ? 'drawn above the prompt' : isCardInChat ? 'sent to the chat' : 'not drawn yet'}`}`,
+            `above the prompt drawn ${aboveDraws} times, frames ${timer === null ? 'stopped' : 'running'}`,
             `problems: ${lastDeny || 'none'}`,
         ].join('\n')
     }
@@ -866,6 +871,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
 }
 
 const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<void> => {
+    lastMenuKey = `${key} ${new Date(now).toLocaleTimeString()}`
     if (key === 'back' && menuPage === 'species') {
         menuPage = 'nest'
     } else if (key === 'open' || key === 'back') {
@@ -1161,6 +1167,7 @@ export const register: Register = on => {
 
     on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
         const now = await $.clock.now()
+        aboveDraws += 1
         const isInFooter = e.surface === 'terminal' && (footerAt === 0 ? now - startedAt < FOOTER_WAIT_MS : isFooterFit)
         const card = isShown(now) && !e.props.hasSurvey ? drawCard($, e, now, e.props.bodyColumns) : null
         const { Box } = $.ui.resolve(e)
