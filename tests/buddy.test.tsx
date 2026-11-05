@@ -934,3 +934,56 @@ test('a new window shows the last pick, a pick in a window stays with that windo
     expect(store.seats).toEqual({ 'window-a': 2, 'window-b': 1 })
     expect(store.homes).toBeUndefined()
 })
+
+test('if nothing draws above the prompt, the card goes to the chat instead, and a drawn card does not', async ($, on) => {
+    let now = Date.now()
+    stubEngine(on, () => now, true)
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: now }, affection: { value: 60, at: now } } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    const lines: string[] = []
+    on('ui.log', (_, e) => {
+        lines.push((e as { text: string }).text)
+
+        return { value: undefined }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    const above = await $.ui.mount(ABOVE)
+    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    await above.redraw()
+    now += 2000
+    await ui.advance(400)
+    const whenDrawn = lines.length
+    await above.unmount()
+    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'card' }, { in: 'buddy-band' })
+    now += 2000
+    await ui.advance(400)
+    await ui.redraw()
+    const band = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.unmount()
+
+    expect(whenDrawn).toBe(0)
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toContain('Noodle · ninja')
+    expect(band).toContain('here is my card, in the chat')
+})
+
+test('hiding the buddy says how to bring it back', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: NOODLE })
+    const toasts: string[] = []
+    on('ui.toast', (_, e) => {
+        toasts.push((e as { text: string }).text)
+
+        return { value: undefined }
+    })
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const result = await $.command.run({ command: 'buddy', args: 'off' } as Parameters<typeof $.command.run>[0])
+
+    expect(result.text).toBe('Noodle is hiding. /buddy on brings it back')
+    expect(toasts).toEqual(['Noodle is hiding in this window. /buddy on brings it back'])
+})

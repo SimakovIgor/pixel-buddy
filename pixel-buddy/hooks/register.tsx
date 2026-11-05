@@ -42,6 +42,7 @@ const TIRED_NAG_MS = 30 * 60000
 const LONELY_NAG_MS = 45 * 60000
 const BREAK_MS = 10 * 60000
 const CARD_MS = 60000
+const CARD_DRAW_WAIT_MS = 1500
 const NOMS = ['nom!', 'yum!', 'crunch!', 'mmm!']
 
 const MOOD_MS: Partial<Record<Mood, number>> = { shock: 1600, dizzy: 3200, happy: 2600, love: 2600 }
@@ -108,6 +109,8 @@ let activeSince = 0
 let lastActiveAt = 0
 let joy: { what: string; at: number } | null = null
 let cardAt: number | null = null
+let cardDrawnAt = 0
+let isCardInChat = false
 
 const ALIASES: Record<string, string> = {
     rename: 'name',
@@ -364,12 +367,26 @@ const cherish = ($: EngineInterface, amount: number, now: number): void => {
 
 const toggleCard = (now: number): void => {
     cardAt = cardAt === null ? now : null
+    isCardInChat = false
+    if (cardAt !== null) {
+        sayText('my card is above the prompt ↑ (ctrl+x ctrl+a if folded)', now)
+    }
+}
+
+const cardInChat = ($: EngineInterface, now: number): void => {
+    if (buddy === null) {
+        return
+    }
+    isCardInChat = true
+    cardOf(buddy, now, feelingOf(now)).split('\n').slice(0, 7).filter(line => line !== '').forEach(line => $.ui.log(line))
+    sayText('here is my card, in the chat', now)
 }
 
 const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: number): RenderElement | null => {
     if (buddy === null || cardAt === null) {
         return null
     }
+    cardDrawnAt = now
     const { Box, Text } = $.ui.resolve(e)
     const rarity = rarityOf(buddy.rarity)
     const color = `#${rarity.color.toString(16).padStart(6, '0')}`
@@ -582,6 +599,9 @@ const frame = async ($: EngineInterface): Promise<void> => {
     if (turnAt !== null && !saidThinking && now - turnAt > LONG_THINK_MS) {
         saidThinking = true
         say('thinking', now)
+    }
+    if (cardAt !== null && !isCardInChat && cardDrawnAt < cardAt && now - cardAt > CARD_DRAW_WAIT_MS) {
+        cardInChat($, now)
     }
     if (cardAt !== null && now - cardAt > CARD_MS) {
         cardAt = null
@@ -827,8 +847,11 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         hatchAt = arg === 'on' && isOff ? now : hatchAt
         isOff = arg === 'off'
         $.ui.invalidate('ui.render')
+        if (isOff) {
+            $.ui.toast(`${current.name} is hiding in this window. /buddy on brings it back`)
+        }
 
-        return isOff ? 'Buddy is resting' : 'Buddy is back'
+        return isOff ? `${current.name} is hiding. /buddy on brings it back` : `${current.name} is back`
     }
     if (arg === 'debug') {
         return [
