@@ -44,8 +44,8 @@ const FOOTER_RESERVE = 96
 const FOOTER_WAIT_MS = 1500
 const MARATHON_MS = 90000
 const LONG_THINK_MS = 60000
-const FACT_AFTER_MS = 90000
-const FACT_EVERY_MS = 3 * 60000
+const FACT_AFTER_MS = 30000
+const FACT_EVERY_MS = 2 * 60000
 const TYPING_QUIET_MS = 10000
 const LOOP_ERRORS = 3
 const SNACK_QUEUE = 3
@@ -152,9 +152,9 @@ const menuOf = (): Menu | null => {
         return null
     }
     if (menuPage === 'species') {
-        const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: one.name, isOn: false }))
+        const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: ownedOf(one.id) === undefined ? one.name : `${one.name} ✓`, isOn: false }))
 
-        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }], header: 'a new egg: pick a species, everyone else stays in your nest' }
+        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }], header: 'one of each species: pick a new one, ✓ calls yours back' }
     }
     if (menuPage === 'nest') {
         const items: MenuItem[] = [buddy, ...nest].map(one => ({
@@ -957,14 +957,24 @@ const bringBack = async ($: EngineInterface, now: number, hatchedAt: number): Pr
     }
 }
 
-const rehatch = async ($: EngineInterface, now: number, species?: SpeciesId): Promise<boolean> => {
-    if (nest.length + 1 >= NEST_MAX) {
-        return false
+const ownedOf = (species: SpeciesId): Buddy | undefined => [...(buddy === null ? [] : [buddy]), ...nest].find(one => one.species === species)
+
+const rehatch = async ($: EngineInterface, now: number, species?: SpeciesId): Promise<'hatched' | 'full' | 'every' | Buddy> => {
+    const owned = species === undefined ? undefined : ownedOf(species)
+    if (owned !== undefined) {
+        return owned
     }
-    await swapTo($, now, hatch(random, now, species), true)
+    const fresh = SPECIES.filter(one => ownedOf(one.id) === undefined)
+    if (fresh.length === 0) {
+        return 'every'
+    }
+    if (nest.length + 1 >= NEST_MAX) {
+        return 'full'
+    }
+    await swapTo($, now, hatch(random, now, species ?? fresh[Math.floor(random() * fresh.length)]?.id), true)
     claimOwned($, now)
 
-    return true
+    return 'hatched'
 }
 
 const TEST_RUNNERS = /(^|[\s;&/])(gradlew\s+(\S+\s+)*(?<!-x\s)(\w*[tT]est|check)|mvn\s+(\S+\s+)*(test|verify)|(npm|pnpm|yarn|bun)\s+(run\s+)?test|go\s+test|cargo\s+test|pytest|jest|vitest|dotnet\s+test|rspec|phpunit)\b/
@@ -980,7 +990,7 @@ const help = (): string => [
     '  right click       menu: card, feed, buddies, trophies, share, theme, facts, hide',
     '',
     'It eats what your work drops: a cookie for an answer, a fish for green tests, a cake for a commit.',
-    'Snacks give xp and levels. Every buddy you hatch stays in your nest, each window keeps its own.',
+    'Snacks give xp and levels. Every buddy you hatch stays in your nest, one of each species, each window keeps its own.',
     'Rare moments earn trophies, six of them secret.',
     'While Claude works on a long answer, it tells a fact about space, Earth, code, math or philosophy.',
     '',
@@ -1070,7 +1080,22 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         if (rest[0] !== undefined && wanted === undefined) {
             return `No such species. There are: ${speciesList()}`
         }
-        return (await rehatch($, now, wanted?.id)) ? `Hatching… ${current.name} waits in your nest` : `Your nest is full: ${NEST_MAX} buddies`
+        const hatching = await rehatch($, now, wanted?.id)
+        if (hatching === 'hatched') {
+            return `Hatching… ${current.name} waits in your nest`
+        }
+        if (hatching === 'full') {
+            return `Your nest is full: ${NEST_MAX} buddies`
+        }
+        if (hatching === 'every') {
+            return `You have one of every species already. Menu → buddies brings any of them back`
+        }
+        if (hatching.hatchedAt === current.hatchedAt) {
+            return `${current.name} is your ${speciesOf(current.species).name} already, one of each species`
+        }
+        await bringBack($, now, hatching.hatchedAt)
+
+        return `You have a ${speciesOf(hatching.species).name} already: ${hatching.name} comes back from the nest`
     }
     if (arg === 'name' && rest.length > 0) {
         buddy = { ...current, name: rest.join(' ').slice(0, 14) }

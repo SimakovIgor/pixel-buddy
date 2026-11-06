@@ -109,4 +109,4 @@ const STRIDE = 37
 
 export const factOf = (step: number): Fact => FACTS[(((step * STRIDE) % FACTS.length) + FACTS.length) % FACTS.length] ?? FACTS[0] ?? []
 
-export const sayingMsOf = (part: string): number => 1500 + [...part].length * 95
+export const sayingMsOf = (part: string): number => 3000 + [...part].length * 190

@@ -63,8 +63,9 @@ The card tells the mood and what helps:
 
 ## Your nest
 
-Every buddy you hatch stays in your nest with its level, belly and love, up to 12. A new egg never replaces anyone,
-and a buddy resting in the nest does not get hungry or lonely. Each window keeps its own buddy, also after
+Every buddy you hatch stays in your nest with its level, belly and love, one of each species. A new egg never
+replaces anyone: a random one picks a species you don't have yet, and asking for one you have calls that buddy back.
+A buddy resting in the nest does not get hungry or lonely. Each window keeps its own buddy, also after
 `claude --resume`. A new window shows your last pick.
 
 ## Trophies
@@ -118,9 +119,9 @@ Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy
 - **Reacts to the session.** Thinking dots while Claude works, a jolt on a failed command, dizzy after three failures
   in a row, happy on a commit, green tests or a finished plan. A little one runs next to it for every subagent
 - **Does tricks while you wait,** about every half a minute, each species its own
-- **Tells facts on a long answer:** a hundred of them about space, Earth, code, math and philosophy, about one every
-  three minutes while Claude works, never while you type. `facts` in the menu turns them off, `/buddy fact` asks for
-  one now
+- **Tells facts on a long answer:** a hundred of them about space, Earth, code, math and philosophy, the first half a
+  minute in, then one every two minutes while Claude works, never while you type. `facts` in the menu turns them off,
+  `/buddy fact` asks for one now
 - **Comes and goes in its own way:** an egg, a puff of smoke, a rocket, a belly slide, ink, bubbles
 - **Naps when you are away.** After three quiet minutes it lies down under a palm, the ninja under a sakura
 - **Dresses for the season:** a witch hat and bats around Halloween, a Santa hat and snow in December

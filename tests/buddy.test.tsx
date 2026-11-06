@@ -267,6 +267,49 @@ test('the nest holds twelve buddies, then it asks to pick one instead of hatchin
     expect(Object.keys(store).filter(key => key.startsWith('pet:'))).toHaveLength(12)
 })
 
+test('a random egg hatches a species you do not have yet, one of each species', async ($, on) => {
+    stubEngine(on)
+    const others = ['cat', 'duck', 'ghost', 'octopus', 'axolotl', 'robot'].map((species, i) => ({ ...NOODLE, species, hatchedAt: i + 10 }))
+    const store: Record<string, unknown> = { buddy: NOODLE, nest: others }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const result = await $.command.run({ command: 'buddy', args: 'hatch' } as Parameters<typeof $.command.run>[0])
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+
+    expect(result.text).toBe('Hatching… Noodle waits in your nest')
+    expect(card.text).toContain('· penguin')
+})
+
+test('asking for a species you have brings that buddy back from the nest instead of a second one', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: NOODLE, nest: [{ ...NOODLE, name: 'Mochi', species: 'cat', hatchedAt: 10 }] }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const again = await $.command.run({ command: 'buddy', args: 'hatch ninja' } as Parameters<typeof $.command.run>[0])
+    const back = await $.command.run({ command: 'buddy', args: 'hatch cat' } as Parameters<typeof $.command.run>[0])
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+
+    expect(again.text).toBe('Noodle is your ninja already, one of each species')
+    expect(back.text).toBe('You have a cat already: Mochi comes back from the nest')
+    expect(card.text).toContain('Mochi · cat')
+    expect(Object.keys(store).filter(key => key.startsWith('pet:'))).toHaveLength(2)
+})
+
+test('with every species in the nest a new egg does not hatch', async ($, on) => {
+    stubEngine(on)
+    const others = ['cat', 'duck', 'ghost', 'octopus', 'axolotl', 'robot', 'penguin'].map((species, i) => ({ ...NOODLE, species, hatchedAt: i + 10 }))
+    const store: Record<string, unknown> = { buddy: NOODLE, nest: others }
+    storeOn(on, store)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const result = await $.command.run({ command: 'buddy', args: 'hatch' } as Parameters<typeof $.command.run>[0])
+
+    expect(result.text).toBe('You have one of every species already. Menu → buddies brings any of them back')
+    expect(Object.keys(store).filter(key => key.startsWith('pet:'))).toHaveLength(8)
+})
+
 test('a right click anywhere on the band opens the menu, a second one closes it', async ($, on) => {
     stubEngine(on)
     on('store.get', (_, e) => ({ value: (e as { key: string }).key === 'buddy' ? { name: 'Mochi', species: 'cat', rarity: 'rare', stats: { DEBUGGING: 90, PATIENCE: 30, CHAOS: 40, WISDOM: 20, SNARK: 60 }, hatchedAt: 0 } : undefined }))
@@ -1483,7 +1526,7 @@ const bandAt = async (ui: Band) => {
     return JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
 }
 
-test('during a long answer the buddy tells a fact part by part, then waits three minutes before the next one', async ($, on) => {
+test('half a minute into a long answer the buddy tells a fact part by part, then waits two minutes before the next one', async ($, on) => {
     let now = Date.now()
     stubEngine(on, () => now, true)
     const store: Record<string, unknown> = { buddy: { ...NOODLE }, facts: { next: 4 } }
@@ -1495,9 +1538,9 @@ test('during a long answer the buddy tells a fact part by part, then waits three
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
     await $.turn.start({ text: 'go', turnId: 'long' } as Parameters<typeof $.turn.start>[0])
-    now += 61000
+    now += 25000
     const early = await bandAt(ui)
-    now += 34000
+    now += 10000
     const told = await bandAt(ui)
     now += sayingMsOf(first) + 100
     const followed = await bandAt(ui)
