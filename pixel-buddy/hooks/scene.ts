@@ -1494,7 +1494,9 @@ export const paint = (v: View): Uint32Array => {
     if (isHere) {
         drawShine(c, v, x0)
     }
-    drawBubble(c, v, x0)
+    if (!isJumping) {
+        drawBubble(c, v, x0)
+    }
     drawFood(c, v)
     drawToy(c, v)
     drawSpark(c, v)

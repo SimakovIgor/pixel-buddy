@@ -434,7 +434,7 @@ const draw = (elements: ClientElements, s: BandState, p: BandProps, now: number)
         <Box flexDirection="column" width={p.cols}>
             {rows.map(spans => (
                 <Box flexDirection="row">
-                    {spans.map(span => <Text color={hex(span.color)} backgroundColor={hex(span.back)}>{span.text}</Text>)}
+                    {spans.map(span => <Text mono color={hex(span.color)} backgroundColor={hex(span.back)}>{span.text}</Text>)}
                 </Box>
             ))}
         </Box>

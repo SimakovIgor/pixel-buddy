@@ -9,6 +9,8 @@ import { commitTrophiesAt, nextTally } from './trophies'
 import { FACTS, FACT_PART_MAX, factOf, sayingMsOf } from './facts'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
+import BuddyBand from './band-client'
+import type { BandProps } from './band-client'
 import type { View } from './scene'
 
 const BAND = {
@@ -420,6 +422,15 @@ const rowOf = (view: View, row: number): string => {
 
     return Array.from({ length: view.cols }, (_, x) => String.fromCodePoint(cells[(row * view.cols + x) * 3] ?? 0x20)).join('')
 }
+
+test('a bubble waits out the jump instead of covering the buddy where it lands', () => {
+    const said = { text: 'blub', age: 2000 }
+    const landed = footerView({ cols: 64, species: 'octopus', pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, bubble: said, jump: { age: 1200, fromX: 40, toX: 26 } })
+    const after = footerView({ cols: 64, species: 'octopus', pose: { x: 26, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, bubble: said })
+
+    expect([0, 1, 2].map(row => rowOf(landed, row)).join('\n')).not.toContain('blub')
+    expect([0, 1, 2].map(row => rowOf(after, row)).join('\n')).toContain('blub')
+})
 
 test('a bubble keeps clear of the subagents running behind the buddy', () => {
     const view = footerView({ cols: 64, pose: { x: 4, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, agents: 2, bubble: { text: 'minions deployed', age: 5000 } })
@@ -1344,6 +1355,29 @@ test('on the desktop the trophy case is a grid of emoji and names, found ones in
     expect(shown).toContain('?  ???')
     expect(shown).not.toContain('1337')
     expect(shown).not.toContain('"type":"Raster"')
+})
+
+test('on the desktop the band is drawn in the monospaced face, so the buddy and its bubble keep their columns', () => {
+    const band: BandProps = {
+        cols: 64, rows: 3, species: 'octopus', rarity: 'common', mood: 'idle', moodAt: 0, isWorking: false, typingAt: 0,
+        bubble: { text: 'crunch!', at: Date.now() }, hearts: [], agents: 0, hatchAt: null, leave: null, jumpAt: null, action: null,
+        season: null, menu: null, snack: null, isShiny: false, vibe: 'content', trophy: null,
+    }
+    const texts: { mono?: boolean }[] = []
+    const elements = {
+        Box: (props: object) => ({ type: 'Box', props }),
+        Text: (props: { mono?: boolean }) => {
+            texts.push(props)
+
+            return { type: 'Text', props }
+        },
+    }
+    const surface = { state: undefined, setState: () => undefined, every: () => undefined, onPointer: () => undefined, post: () => undefined, elements }
+
+    BuddyBand(band, surface as unknown as Parameters<typeof BuddyBand>[1])
+
+    expect(texts.length).toBeGreaterThan(3)
+    expect(texts.filter(text => text.mono !== true)).toEqual([])
 })
 
 test('every fact fits the bubble in parts of 30 characters, and all of them come once before any repeats', () => {
