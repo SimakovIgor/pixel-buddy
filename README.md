@@ -3,21 +3,25 @@
 **Ship code, feed your buddy.**
 
 A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, levels up,
-earns rare trophies, does tricks while Claude thinks, naps when you are away and plays with you on clicks. Every buddy
+earns rare trophies, does tricks and tells facts while Claude thinks, naps when you are away and plays with you on
+clicks. Every buddy
 you hatch stays in your nest, and nothing leaves your machine.
 
 ![An answer from Claude drops a cookie, the ninja walks over and eats it. A commit drops a cake and brings level 3](pixel-buddy/docs/feed.gif)
 
 ## Install
 
-At the prompt of a terminal session:
+1. Open Claude Code 2.1.318 or later in a terminal. Older one? Run `claude update`
+2. Paste this at the prompt:
 
-```
-/plugin install pixel-buddy --marketplace SimakovIgor/pixel-buddy
-```
+   ```
+   /plugin install pixel-buddy --marketplace SimakovIgor/pixel-buddy
+   ```
 
-Answer `y` and pick the user scope to have it in every session. Update and removal are in the plugin's
-[README](pixel-buddy/README.md#install).
+3. Answer `y` and pick the user scope, so it hatches in every session
+
+The egg hatches in the footer right away. In the desktop app: + next to the prompt box, Plugins, Add marketplace
+`SimakovIgor/pixel-buddy`, Add plugin. Update and removal are in the plugin's [README](pixel-buddy/README.md#install).
 
 ## A quick look
 

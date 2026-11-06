@@ -3,7 +3,8 @@
 **Ship code, feed your buddy.**
 
 A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, levels up,
-earns rare trophies, does tricks while Claude thinks, naps when you are away and plays with you on clicks.
+earns rare trophies, does tricks and tells facts while Claude thinks, naps when you are away and plays with you on
+clicks.
 
 ![An answer from Claude drops a cookie, the ninja walks over and eats it. A commit drops a cake and brings level 3](docs/feed.gif)
 
@@ -117,6 +118,9 @@ Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy
 - **Reacts to the session.** Thinking dots while Claude works, a jolt on a failed command, dizzy after three failures
   in a row, happy on a commit, green tests or a finished plan. A little one runs next to it for every subagent
 - **Does tricks while you wait,** about every half a minute, each species its own
+- **Tells facts on a long answer:** a hundred of them about space, Earth, code, math and philosophy, about one every
+  three minutes while Claude works, never while you type. `facts` in the menu turns them off, `/buddy fact` asks for
+  one now
 - **Comes and goes in its own way:** an egg, a puff of smoke, a rocket, a belly slide, ink, bubbles
 - **Naps when you are away.** After three quiet minutes it lies down under a palm, the ninja under a sakura
 - **Dresses for the season:** a witch hat and bats around Halloween, a Santa hat and snow in December
@@ -148,6 +152,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | `trophies` | your trophy case above the prompt |
 | `share` | a card of your buddy and its trophies on the clipboard |
 | `theme` | calendar, winter, halloween or off |
+| `facts` | facts while Claude works, on or off |
 | `hide` | hides it in this window. `/buddy on` brings it back |
 
 ## Commands
@@ -159,6 +164,8 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | `/buddy share` | the share card, copied and printed |
 | `/buddy name <name>` | rename it |
 | `/buddy feed` | a berry |
+| `/buddy fact` | a fact right now |
+| `/buddy facts on`, `/buddy facts off` | facts while Claude works |
 | `/buddy on` | bring it back after `hide` |
 | `/buddy demo` | every reaction in 25 seconds |
 | `/buddy help` | clicks and commands |
@@ -171,7 +178,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
   to react, for example to a Bash command that runs tests, and keeps none of them
 - **What it keeps, on this machine only,** in the plugin store of Claude Code: your buddies with their stats, xp,
   belly and love, which buddy each of your last 50 sessions shows, the trophies with their dates, how many days in a
-  row it ate, the theme
+  row it ate, whether facts are on and which one comes next, the theme
 - **The clipboard only when you ask:** `share` copies its card, nothing else
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
   permissions or settings

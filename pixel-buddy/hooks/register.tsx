@@ -4,6 +4,8 @@ import type { BandProps } from './band-client'
 
 import { FULL, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, vibeOf } from './buddy'
 import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
+import { FACTS, factOf, sayingMsOf } from './facts'
+import type { Fact } from './facts'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
 import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, encode, portraitOf } from './scene'
@@ -25,6 +27,7 @@ const LEGACY_NEST = 'nest'
 const NEST_MAX = 12
 const HAT_KEY = 'hat'
 const THEME_KEY = 'theme'
+const FACTS_KEY = 'facts'
 const TROPHY_KEY = 'trophies'
 const TALLY_KEY = 'tally'
 const THEMES = ['auto', 'winter', 'halloween', 'off'] as const
@@ -41,6 +44,9 @@ const FOOTER_RESERVE = 96
 const FOOTER_WAIT_MS = 1500
 const MARATHON_MS = 90000
 const LONG_THINK_MS = 60000
+const FACT_AFTER_MS = 90000
+const FACT_EVERY_MS = 3 * 60000
+const TYPING_QUIET_MS = 10000
 const LOOP_ERRORS = 3
 const SNACK_QUEUE = 3
 const HUNGRY_NAG_MS = 20 * 60000
@@ -128,6 +134,10 @@ let dizzyAt = 0
 let answers = 0
 let catches: number[] = []
 let talliedDay = ''
+let isFactsOn = true
+let factStep: number | null = null
+let factAt = 0
+let talk: { parts: Fact; index: number; at: number } | null = null
 
 const ALIASES: Record<string, string> = {
     rename: 'name',
@@ -166,6 +176,7 @@ const menuOf = (): Menu | null => {
         caseAt === null ? { key: 'trophies', label: 'trophies', isOn: false } : { key: 'trophies-close', label: 'hide trophies', isOn: true },
         { key: 'share', label: 'share', isOn: false },
         { key: 'theme', label: 'theme', isOn: theme !== 'auto' && theme !== 'off' },
+        { key: 'facts', label: 'facts', isOn: isFactsOn },
         { key: 'hide', label: 'hide', isOn: false },
         { key: 'close', label: '×', isOn: false },
     ]
@@ -250,7 +261,17 @@ const syncShared = async ($: EngineInterface): Promise<void> => {
     }
     theme = await readTheme($)
     found = { ...foundOf(await $.store.get(TROPHY_KEY).catch(() => undefined)), ...found }
+    applyFacts(await $.store.get(FACTS_KEY).catch(() => undefined))
 }
+
+const applyFacts = (stored: unknown): void => {
+    const saved = typeof stored === 'object' && stored !== null ? (stored as { next?: unknown; isOff?: unknown }) : {}
+    isFactsOn = saved.isOff !== true
+    factStep = typeof saved.next === 'number' ? Math.max(saved.next, factStep ?? saved.next) : factStep
+}
+
+const saveFacts = ($: EngineInterface): Promise<void> =>
+    $.store.set(FACTS_KEY, { next: factStep, isOff: !isFactsOn }).then(() => undefined, () => undefined)
 
 const isHolidays = (now: number): boolean => {
     const date = new Date(now)
@@ -313,12 +334,47 @@ const say = (moment: Moment, now: number, isUrgent = false): void => {
     }
     bubble = { text: lineFor(moment, peakOf(buddy), random()), at: now }
     saidAt = now
+    talk = null
 }
 
 const sayText = (line: string, now: number): void => {
     bubble = { text: line, at: now }
     saidAt = now
+    talk = null
 }
+
+const tellFact = ($: EngineInterface, now: number): Fact => {
+    const step = factStep ?? Math.floor(random() * FACTS.length)
+    const fact = factOf(step)
+    factStep = step + 1
+    factAt = now
+    void saveFacts($)
+    bubble = { text: fact[0] ?? '', at: now }
+    saidAt = now
+    talk = { parts: fact, index: 0, at: now }
+
+    return fact
+}
+
+const stepTalk = (now: number): void => {
+    if (talk === null || now - talk.at <= sayingMsOf(talk.parts[talk.index] ?? '')) {
+        return
+    }
+    const index = talk.index + 1
+    const part = talk.parts[index]
+    if (part === undefined) {
+        talk = null
+
+        return
+    }
+    talk = { ...talk, index, at: now }
+    bubble = { text: part, at: now }
+    saidAt = now
+}
+
+const isFactTime = (now: number): boolean =>
+    isFactsOn && isShown(now) && !isOff && demoAt === null && hatchAt === null && turnAt !== null && talk === null
+    && now - turnAt > FACT_AFTER_MS && now - factAt > FACT_EVERY_MS && now - saidAt > CHATTER_GAP_MS && now - typingAt > TYPING_QUIET_MS
 
 const currentMood = (now: number): Mood => {
     const span = MOOD_MS[mood]
@@ -759,6 +815,10 @@ const frame = async ($: EngineInterface): Promise<void> => {
         saidThinking = true
         say('thinking', now)
     }
+    stepTalk(now)
+    if (isFactTime(now)) {
+        tellFact($, now)
+    }
     if (cardAt !== null && !isCardInChat && cardDrawnAt < cardAt && now - cardAt > CARD_DRAW_WAIT_MS) {
         cardInChat($, now)
     }
@@ -913,11 +973,12 @@ const help = (): string => [
     '  double click      its own move',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu: card, feed, buddies, trophies, share, theme, hide',
+    '  right click       menu: card, feed, buddies, trophies, share, theme, facts, hide',
     '',
     'It eats what your work drops: a cookie for an answer, a fish for green tests, a cake for a commit.',
     'Snacks give xp and levels. Every buddy you hatch stays in your nest, each window keeps its own.',
     'Rare moments earn trophies, six of them secret.',
+    'While Claude works on a long answer, it tells a fact about space, Earth, code, math or philosophy.',
     '',
     'Commands:',
     '  /buddy               its full card with stats and personality',
@@ -925,6 +986,8 @@ const help = (): string => [
     '  /buddy share         copy a card of your buddy to show it off',
     '  /buddy name <name>   rename it',
     '  /buddy feed          a berry',
+    '  /buddy fact          a fact right now',
+    '  /buddy facts on|off  facts while Claude works',
     '  /buddy on            bring it back after hide',
     '  /buddy hatch [cat, duck, ghost, octopus, axolotl, robot, ninja, penguin]',
     '  /buddy theme [auto, winter, halloween, off] · /buddy off',
@@ -976,6 +1039,17 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
             halloween: 'Boo! Witch hat on',
             off: 'No theme',
         }[theme]
+    }
+    if (arg === 'fact') {
+        return `Did you know? ${tellFact($, now).join(' ')}`
+    }
+    if (arg === 'facts') {
+        const wanted = rest[0]?.toLowerCase()
+        isFactsOn = wanted === 'on' || (wanted !== 'off' && !isFactsOn)
+        await saveFacts($)
+        $.ui.invalidate('ui.render')
+
+        return isFactsOn ? `${current.name} tells a fact now and then while Claude works on a long answer` : `No more facts. /buddy facts on brings them back`
     }
     if (arg === 'jump') {
         return startJump(now) ? 'Jump!' : 'Not enough room to jump'
@@ -1071,6 +1145,14 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     } else if (key === 'theme') {
         await perform($, now, 'theme', [])
         sayText(`theme: ${theme}`, now)
+    } else if (key === 'facts') {
+        menuPage = null
+        await perform($, now, 'facts', [])
+        if (isFactsOn) {
+            tellFact($, now)
+        } else {
+            sayText('ok, no more facts', now)
+        }
     } else if (key === 'hide') {
         menuPage = null
         await perform($, now, 'off', [])
@@ -1122,6 +1204,7 @@ export const register: Register = on => {
         await $.command.register({ name: COMMAND, description: 'Your pixel buddy. Most things are clicks: right click it for the menu', argumentHint: 'help · name <new name> · on' })
         await loadBuddy($, now)
         found = foundOf(await $.store.get(TROPHY_KEY))
+        applyFacts(await $.store.get(FACTS_KEY).catch(() => undefined))
         claimOwned($, now)
         startedAt = now
         await dropLegacyKeys($)

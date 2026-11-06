@@ -6,6 +6,7 @@ import { isTestRun } from './register'
 import { paint } from './scene'
 import { SPECIES } from './species'
 import { commitTrophiesAt, nextTally } from './trophies'
+import { FACTS, FACT_PART_MAX, factOf, sayingMsOf } from './facts'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
 import type { View } from './scene'
@@ -1343,4 +1344,109 @@ test('on the desktop the trophy case is a grid of emoji and names, found ones in
     expect(shown).toContain('?  ???')
     expect(shown).not.toContain('1337')
     expect(shown).not.toContain('"type":"Raster"')
+})
+
+test('every fact fits the bubble in parts of 30 characters, and all of them come once before any repeats', () => {
+    const tooLong = FACTS.flat().filter(part => [...part].length > FACT_PART_MAX)
+    const round = new Set(Array.from({ length: FACTS.length }, (_, step) => factOf(step)))
+
+    expect(tooLong).toEqual([])
+    expect(round.size).toBe(FACTS.length)
+})
+
+test('a line longer than the room by the buddy slides along to its end instead of being cut', () => {
+    const at = (age: number) => rowOf(footerView({ cols: 64, pose: { x: 27, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, bubble: { text: 'Olympus Mons on Mars is about', age } }), 1)
+
+    expect(at(400)).toContain('│ Olympus Mons')
+    expect(at(6000)).toContain('│ Mons on Mars is about ├─')
+    expect(at(6000)).not.toContain('…')
+})
+
+const turnOn = (on: On) => {
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('ui.invalidate', () => ({ value: undefined }))
+}
+
+type Band = { advance: (ms: number) => Promise<unknown>; redraw: () => Promise<unknown>; find: (query: { type: string; key: string }) => Promise<unknown> }
+
+const bandAt = async (ui: Band) => {
+    await ui.advance(300)
+    await ui.redraw()
+
+    return JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+}
+
+test('during a long answer the buddy tells a fact part by part, then waits three minutes before the next one', async ($, on) => {
+    let now = Date.now()
+    stubEngine(on, () => now, true)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE }, facts: { next: 4 } }
+    storeOn(on, store)
+    turnOn(on)
+    const [first = '', second = ''] = factOf(4)
+    const [next = ''] = factOf(5)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await $.turn.start({ text: 'go', turnId: 'long' } as Parameters<typeof $.turn.start>[0])
+    now += 61000
+    const early = await bandAt(ui)
+    now += 34000
+    const told = await bandAt(ui)
+    now += sayingMsOf(first) + 100
+    const followed = await bandAt(ui)
+    now += 60000
+    const later = await bandAt(ui)
+    await ui.unmount()
+
+    expect(early).not.toContain(first)
+    expect(told).toContain(first)
+    expect(followed).toContain(second)
+    expect(later).not.toContain(next)
+    expect(store.facts).toEqual({ next: 5, isOff: false })
+})
+
+test('facts in the menu turn them off for good, the store keeps it, and a long answer then passes in silence', async ($, on) => {
+    let now = Date.now()
+    stubEngine(on, () => now, true)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE }, facts: { next: 0 } }
+    storeOn(on, store)
+    turnOn(on)
+    const [first = ''] = factOf(0)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    const menu = await bandAt(ui)
+    await ui.post({ type: 'menu', key: 'facts' }, { in: 'buddy-band' })
+    const off = await bandAt(ui)
+    await $.turn.start({ text: 'go', turnId: 'long' } as Parameters<typeof $.turn.start>[0])
+    now += 120000
+    const silent = await bandAt(ui)
+    await ui.unmount()
+
+    expect(menu).toContain('"label":"facts","isOn":true')
+    expect(off).toContain('ok, no more facts')
+    expect(silent).not.toContain(first)
+    expect(store.facts).toEqual({ next: 0, isOff: true })
+})
+
+test('/buddy fact tells one right away, in the chat and in the bubble, and /buddy facts on brings them back', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE }, facts: { next: 7, isOff: true } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+    const [first = ''] = factOf(7)
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    const fact = await $.command.run({ command: 'buddy', args: 'fact' } as Parameters<typeof $.command.run>[0])
+    await ui.redraw()
+    const band = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    const back = await $.command.run({ command: 'buddy', args: 'facts on' } as Parameters<typeof $.command.run>[0])
+    await ui.unmount()
+
+    expect(fact.text).toBe(`Did you know? ${factOf(7).join(' ')}`)
+    expect(band).toContain(first)
+    expect(back.text).toContain('tells a fact now and then')
+    expect(store.facts).toEqual({ next: 8, isOff: false })
 })

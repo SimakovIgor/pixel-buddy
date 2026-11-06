@@ -18,6 +18,8 @@ const UPPER = 0x2580
 const LOWER = 0x2584
 const BUBBLE_MAX = 38
 const TYPE_MS = 32
+const SCROLL_WAIT_MS = 600
+const SCROLL_MS = 150
 
 export type Mood = 'idle' | 'think' | 'tool' | 'shock' | 'dizzy' | 'happy' | 'love' | 'sleep'
 
@@ -1148,9 +1150,11 @@ const drawBubble = (c: Canvas, v: View, x0: number): void => {
         return
     }
     const chars = [...v.bubble.text]
-    const text = chars.length <= room ? v.bubble.text : `${chars.slice(0, room - 1).join('').trimEnd()}…`
-    const shown = [...text].slice(0, Math.floor(v.bubble.age / TYPE_MS)).join('')
-    const width = [...text].length + 4
+    const slide = Math.floor((v.bubble.age - room * TYPE_MS - SCROLL_WAIT_MS) / SCROLL_MS)
+    const offset = chars.length <= room ? 0 : Math.max(0, Math.min(chars.length - room, slide))
+    const visible = chars.slice(offset, offset + room)
+    const shown = visible.slice(0, Math.floor(v.bubble.age / TYPE_MS)).join('')
+    const width = visible.length + 4
     const x = isLeft ? side - width - 2 : side + 2
     const edge = scale(BUBBLE_EDGE, alpha)
     for (let y = 0; y < ROWS * 2; y++) {
