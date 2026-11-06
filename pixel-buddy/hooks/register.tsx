@@ -154,7 +154,7 @@ const menuOf = (): Menu | null => {
     if (menuPage === 'species') {
         const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: ownedOf(one.id) === undefined ? one.name : `${one.name} ✓`, isOn: false }))
 
-        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }], header: 'one of each species: pick a new one, ✓ calls yours back' }
+        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }], header: 'pick a new species, ✓ calls yours back' }
     }
     if (menuPage === 'nest') {
         const items: MenuItem[] = [buddy, ...nest].map(one => ({
