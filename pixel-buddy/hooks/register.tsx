@@ -1173,7 +1173,8 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
         hatchAt = now
     }
     cols = Math.min(WIDTH, width)
-    const props = bandPropsOf(now)
+    const band = bandPropsOf(now)
+    const props = band === null ? null : { ...band, isDesktop: e.surface !== 'terminal' }
     if (props === null || cols < MIN_COLS || (e.surface !== 'terminal' && e.surface !== 'desktop')) {
         return theirs
     }

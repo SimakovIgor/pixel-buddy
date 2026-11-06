@@ -57,6 +57,7 @@ export type View = {
     isShiny: boolean
     vibe: Vibe
     trophy: TrophyView | null
+    isDesktop?: boolean
 }
 
 export type Leave = { species: SpeciesId; age: number }
@@ -127,6 +128,7 @@ const EGG_SPOT = 0x8fd3c7
 const CRACK = 0x3a2f2a
 const BUBBLE_TEXT = 0xece8f5
 const BUBBLE_EDGE = 0x6c6880
+const BUBBLE_FILL = 0x3d3a4c
 const WHITE = 0xffffff
 const FACE_CELLS = ['e', 'c', 'm']
 const SHINY_TURN = (160 * Math.PI) / 180
@@ -175,7 +177,7 @@ const hash = (n: number): number => {
     return x - Math.floor(x)
 }
 
-export type Canvas = { width: number; rows: number; base: number; pixels: Uint32Array; glyphs: Uint32Array; colors: Uint32Array }
+export type Canvas = { width: number; rows: number; base: number; pixels: Uint32Array; glyphs: Uint32Array; colors: Uint32Array; fills: Uint32Array }
 
 export const canvasOf = (cols: number, rows: number, baseRows = 0): Canvas => ({
     width: cols,
@@ -184,6 +186,7 @@ export const canvasOf = (cols: number, rows: number, baseRows = 0): Canvas => ({
     pixels: new Uint32Array(cols * rows * 2).fill(NONE),
     glyphs: new Uint32Array(cols * rows),
     colors: new Uint32Array(cols * rows),
+    fills: new Uint32Array(cols * rows).fill(NONE),
 })
 
 export const dot = (c: Canvas, x: number, y: number, color: number, size = 1): void => {
@@ -313,7 +316,11 @@ const shakeOf = (v: View): number => {
     return 0
 }
 
-const liftOf = (v: View): number => {
+const wholeCellsOf = (v: View, lift: number): number => (v.isDesktop === true ? Math.trunc(lift / 2) * 2 : lift)
+
+const liftOf = (v: View): number => wholeCellsOf(v, rawLiftOf(v))
+
+const rawLiftOf = (v: View): number => {
     if (v.nap !== null && v.nap.wokeAge !== null && v.nap.wokeAge < WAKE_HOP_MS) {
         return 1
     }
@@ -328,6 +335,10 @@ const liftOf = (v: View): number => {
     return v.pose.lift
 }
 
+const isMelted = (v: View, light: number, dx: number, dy: number): boolean => v.isDesktop === true && light < 1 && hash(dx * 7 + dy * 13) >= light
+
+const tintOf = (v: View, color: number, light: number): number => (v.isDesktop === true ? color : scale(color, light))
+
 const drawSprite = (c: Canvas, v: View, x0: number, size = 1, light = 1): void => {
     const species = speciesOf(v.species)
     const palette = paletteOf(v)
@@ -336,7 +347,7 @@ const drawSprite = (c: Canvas, v: View, x0: number, size = 1, light = 1): void =
     const shade = palette.s ?? body
     const eye = eyeColor(v, body, shade, palette.e ?? 0)
     const x = x0 + shakeOf(v)
-    const y = v.jump === null ? liftOf(v) : v.pose.lift
+    const y = v.jump === null ? liftOf(v) : wholeCellsOf(v, v.pose.lift)
     const eyes: Array<[number, number]> = []
     frame.forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell === '.') {
@@ -349,14 +360,20 @@ const drawSprite = (c: Canvas, v: View, x0: number, size = 1, light = 1): void =
             return
         }
         const isGleam = cell === 'k' && dy === Math.floor(v.t / 110) % 6
-        dot(c, x + dx, y + dy, scale(cell === 'e' ? body : isGleam ? WHITE : palette[cell] ?? body, light), size)
+        if (isMelted(v, light, dx, dy)) {
+            return
+        }
+        dot(c, x + dx, y + dy, tintOf(v, cell === 'e' ? body : isGleam ? WHITE : palette[cell] ?? body, light), size)
     }))
     const isLooking = v.mood === 'idle' || v.mood === 'think'
     eyes.forEach(([dx, dy]) => {
         const lookX = isLooking ? v.pose.lookX : 0
         const target = frame[dy]?.[dx + lookX]
         const isInside = target !== undefined && target !== '.' && target !== 'e'
-        dot(c, x + dx + (isInside ? lookX : 0), y + dy, scale(eye, light), size)
+        if (isMelted(v, light, dx, dy)) {
+            return
+        }
+        dot(c, x + dx + (isInside ? lookX : 0), y + dy, tintOf(v, eye, light), size)
     })
 }
 
@@ -897,7 +914,9 @@ const drawFood = (c: Canvas, v: View): void => {
     const crumb = sprite[sprite.length - 1]?.[0] ?? WHITE
     for (let k = 0; k < 4; k++) {
         const way = k % 2 === 0 ? -1 : 1
-        dot(c, food.x + way * (1 + p * (2 + k)), food.y + 1 - Math.sin(p * Math.PI) * (1 + (k % 2)), scale(crumb, 1 - p * 0.6))
+        if (p < 0.8) {
+            dot(c, food.x + way * (1 + p * (2 + k)), food.y + 1 - Math.sin(p * Math.PI) * (1 + (k % 2)), crumb)
+        }
     }
 }
 
@@ -1007,14 +1026,17 @@ const drawHat = (c: Canvas, v: View, x0: number, size = 1, light = 1): void => {
         return
     }
     const hat = HATS[v.season]
-    const y = v.jump === null ? liftOf(v) : v.pose.lift
+    const y = v.jump === null ? liftOf(v) : wholeCellsOf(v, v.pose.lift)
     const x = x0 + shakeOf(v)
     hat.art.forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell === '.') {
             return
         }
         const column = v.pose.isFacingLeft ? SPRITE_W - 1 - (dx + 1) : dx + 1
-        dot(c, x + column, y + dy, scale(hat.colors[cell] ?? WHITE, light), size)
+        if (isMelted(v, light, column, dy)) {
+            return
+        }
+        dot(c, x + column, y + dy, tintOf(v, hat.colors[cell] ?? WHITE, light), size)
     }))
 }
 
@@ -1162,6 +1184,17 @@ const drawBubble = (c: Canvas, v: View, x0: number): void => {
             dot(c, x + dx, y, NONE)
             clearGlyph(c, x + dx, Math.floor(y / 2))
         }
+    }
+    if (v.isDesktop === true) {
+        const row = 1 + c.base
+        for (let dx = 1; dx < width - 1; dx++) {
+            if (x + dx >= 0 && x + dx < c.width && row < c.rows) {
+                c.fills[row * c.width + x + dx] = BUBBLE_FILL
+            }
+        }
+        write(c, x + 2, 1, shown, BUBBLE_TEXT)
+
+        return
     }
     write(c, x, 0, `╭${'─'.repeat(width - 2)}╮`, edge)
     write(c, x, 1, isLeft ? '│' : '┤', edge)
@@ -1436,7 +1469,9 @@ export const toCells = (c: Canvas): Uint32Array => {
             const glyph = c.glyphs[row * c.width + x] ?? 0
             const at = (row * c.width + x) * 3
             if (top === NONE && bottom === NONE) {
-                cells.set(glyph === 0 ? [0x20, DEFAULT, DEFAULT] : [glyph, c.colors[row * c.width + x] ?? DEFAULT, DEFAULT], at)
+                const fill = c.fills[row * c.width + x] ?? NONE
+                const back = fill === NONE ? DEFAULT : fill
+                cells.set(glyph === 0 ? [0x20, DEFAULT, back] : [glyph, c.colors[row * c.width + x] ?? DEFAULT, back], at)
             } else if (bottom === NONE) {
                 cells.set([UPPER, top, DEFAULT], at)
             } else if (top === NONE) {

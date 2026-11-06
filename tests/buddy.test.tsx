@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { cardOf, fullnessOf, hatch, levelOf, vibeOf } from './buddy'
 import type { Buddy } from './buddy'
 import { isTestRun } from './register'
-import { paint } from './scene'
+import { BUBBLE_MS, paint } from './scene'
 import { SPECIES } from './species'
 import { commitTrophiesAt, nextTally } from './trophies'
 import { FACTS, FACT_PART_MAX, factOf, sayingMsOf } from './facts'
@@ -422,6 +422,77 @@ const rowOf = (view: View, row: number): string => {
 
     return Array.from({ length: view.cols }, (_, x) => String.fromCodePoint(cells[(row * view.cols + x) * 3] ?? 0x20)).join('')
 }
+
+test('in the desktop app the bubble is plain text on a fill, the terminal keeps the frame', () => {
+    const view = footerView({ cols: 64, species: 'ghost', pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, bubble: { text: 'boo~', age: 2000 } })
+    const plain = { ...view, isDesktop: true }
+    const cells = paint(plain)
+    const text = rowOf(plain, 1).indexOf('boo~')
+    const backAt = (x: number) => cells[(1 * plain.cols + x) * 3 + 2]
+
+    expect([0, 1, 2].map(row => rowOf(plain, row)).join('')).not.toMatch(/[╭╮╰╯│├┤]/)
+    expect(text).toBeGreaterThan(0)
+    expect(backAt(text)).not.toBe(backAt(0))
+    expect(rowOf(view, 1)).toContain('│ boo~')
+})
+
+const paletteIn = (view: View): Set<number> => {
+    const cells = paint(view)
+
+    return new Set(Array.from({ length: cells.length / 3 }, (_, at) => [cells[at * 3 + 1] ?? 0, cells[at * 3 + 2] ?? 0]).flat())
+}
+
+test('in the desktop app a happy bounce moves the buddy by whole rows, so no gap opens between its pixel rows', () => {
+    const at = (t: number, isDesktop: boolean) => paint(footerView({ cols: 64, species: 'octopus', mood: 'love', moodAge: 800, t, isDesktop }))
+
+    expect(at(1400, true)).toEqual(at(1540, true))
+    expect(at(1400, false)).not.toEqual(at(1540, false))
+})
+
+test('crumbs keep the snack color while they fly and then vanish, instead of turning dark', () => {
+    const snack = footerView({ cols: 64, species: 'cat', food: { kind: 'cookie', x: 20, y: 5, eatenAge: null } })
+    const flying = footerView({ cols: 64, species: 'cat', food: { kind: 'cookie', x: 20, y: 5, eatenAge: 300 } })
+    const known = paletteIn(snack)
+
+    expect([...paletteIn(flying)].filter(color => !known.has(color))).toEqual([])
+})
+
+test('in the desktop app a fading buddy melts away pixel by pixel instead of turning dark on the light panel', () => {
+    const idle = paletteIn(footerView({ cols: 64, species: 'ghost', isDesktop: true }))
+    const leaving = paletteIn(footerView({ cols: 64, species: 'ghost', isDesktop: true, leave: { species: 'ghost', age: 300 } }))
+    const leavingInTerminal = paletteIn(footerView({ cols: 64, species: 'ghost', leave: { species: 'ghost', age: 300 } }))
+
+    expect([...leaving].filter(color => !idle.has(color))).toEqual([])
+    expect([...leavingInTerminal].filter(color => !idle.has(color)).length).toBeGreaterThan(0)
+})
+
+test('in the desktop app the bubble keeps its fill to the end instead of darkening', () => {
+    const backOf = (age: number) => {
+        const view = footerView({ cols: 64, species: 'ghost', isDesktop: true, bubble: { text: 'boo~', age } })
+        const x = rowOf(view, 1).indexOf('boo~')
+
+        return paint(view)[(view.cols + x) * 3 + 2]
+    }
+
+    expect(backOf(BUBBLE_MS - 300)).toBe(backOf(2000))
+})
+
+test('the band tells the client to drop the bubble frame on the desktop and keep it in the terminal', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    const desktop = await $.ui.mount({ ...ABOVE, surface: 'desktop' })
+    const onDesktop = JSON.stringify(await desktop.find({ type: 'Client', key: 'buddy-band' }) ?? null)
+    await desktop.unmount()
+    const terminal = await $.ui.mount(BAND)
+    const inTerminal = JSON.stringify(await terminal.find({ type: 'Client', key: 'buddy-band' }) ?? null)
+    await terminal.unmount()
+
+    expect(onDesktop).toContain('"isDesktop":true')
+    expect(inTerminal).toContain('"isDesktop":false')
+})
 
 test('a bubble waits out the jump instead of covering the buddy where it lands', () => {
     const said = { text: 'blub', age: 2000 }
@@ -1357,16 +1428,16 @@ test('on the desktop the trophy case is a grid of emoji and names, found ones in
     expect(shown).not.toContain('"type":"Raster"')
 })
 
-test('on the desktop the band is drawn in the monospaced face, so the buddy and its bubble keep their columns', () => {
+test('on the desktop the band is drawn in the monospaced face and the bubble without a frame', () => {
     const band: BandProps = {
         cols: 64, rows: 3, species: 'octopus', rarity: 'common', mood: 'idle', moodAt: 0, isWorking: false, typingAt: 0,
-        bubble: { text: 'crunch!', at: Date.now() }, hearts: [], agents: 0, hatchAt: null, leave: null, jumpAt: null, action: null,
-        season: null, menu: null, snack: null, isShiny: false, vibe: 'content', trophy: null,
+        bubble: { text: 'crunch!', at: Date.now() - 2000 }, hearts: [], agents: 0, hatchAt: null, leave: null, jumpAt: null, action: null,
+        season: null, menu: null, snack: null, isShiny: false, vibe: 'content', trophy: null, isDesktop: true,
     }
-    const texts: { mono?: boolean }[] = []
+    const texts: { mono?: boolean; children?: unknown }[] = []
     const elements = {
         Box: (props: object) => ({ type: 'Box', props }),
-        Text: (props: { mono?: boolean }) => {
+        Text: (props: { mono?: boolean; children?: unknown }) => {
             texts.push(props)
 
             return { type: 'Text', props }
@@ -1378,6 +1449,8 @@ test('on the desktop the band is drawn in the monospaced face, so the buddy and 
 
     expect(texts.length).toBeGreaterThan(3)
     expect(texts.filter(text => text.mono !== true)).toEqual([])
+    expect(texts.map(text => String(text.children)).join('')).toContain('crunch!')
+    expect(texts.map(text => String(text.children)).join('')).not.toMatch(/[╭╮╰╯│├┤]/)
 })
 
 test('every fact fits the bubble in parts of 30 characters, and all of them come once before any repeats', () => {
