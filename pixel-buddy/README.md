@@ -183,6 +183,19 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
   permissions or settings
 
+| Hook | What it does with it |
+| --- | --- |
+| `session.start` | loads your buddy, registers `/buddy`, starts the frames |
+| `command.run` | answers `/buddy` only. Every other command passes by untouched |
+| `prompt.edit` | notes that you are typing, so the buddy keeps quiet. The text stays as you typed it |
+| `prompt.submit` | wakes the buddy and closes an open card. The prompt goes on unchanged |
+| `turn.start`, `turn.complete` | thinking face while Claude works, a cookie when the answer comes |
+| `tool.call` | looks at the result: a jolt on a failure, a fish for green tests, a cake for a commit or a finished plan. The call and its result go on unchanged |
+| `ui.message` | clicks and menu presses on the buddy's own strip. Messages for anything else pass by |
+| `ui.render` | draws the strip in the footer or above the prompt, next to what is already there |
+
+Subagents are counted from the list of running agents, without a hook on their start.
+
 ## How it works
 
 Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/overview.md):

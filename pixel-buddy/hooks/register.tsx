@@ -783,7 +783,11 @@ const nag = (now: number): void => {
 
 const refreshAgents = async ($: EngineInterface, now: number): Promise<void> => {
     const list = await $.agent.list()
-    agents = list.filter(agent => agent.status === 'running').length
+    const running = list.filter(agent => agent.status === 'running').length
+    if (running > agents) {
+        say('agents', now)
+    }
+    agents = running
     if (agents >= HIVE) {
         award($, 'hive', now)
     }
@@ -1286,14 +1290,6 @@ export const register: Register = on => {
 
         return next(e)
     })
-
-    on('agent.spawn', async ($, e, next) => {
-        if (e.resume === undefined) {
-            say('agents', await $.clock.now())
-        }
-
-        return next(e)
-    }).catch(($, e, next) => next(e))
 
     on('tool.call', async ($, e, next) => {
         const isMain = e.agentId === undefined

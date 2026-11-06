@@ -1450,3 +1450,25 @@ test('/buddy fact tells one right away, in the chat and in the bubble, and /budd
     expect(back.text).toContain('tells a fact now and then')
     expect(store.facts).toEqual({ next: 8, isOff: false })
 })
+
+test('a subagent that starts makes the buddy say so, and the same helpers still running say nothing more', async ($, on) => {
+    let now = Date.now()
+    let running = 0
+    stubEngine(on, () => now, true)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('agent.list', () => ({ value: Array.from({ length: running }, (_, k) => ({ id: `a${k}`, status: 'running', description: 'help', type: 'general' })) }))
+    const said = /minions deployed|sending the interns/
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    now += 30000
+    running = 1
+    const started = await bandAt(ui)
+    now += 30000
+    const still = await bandAt(ui)
+    await ui.unmount()
+
+    expect(said.test(started)).toBe(true)
+    expect(said.test(still)).toBe(false)
+})
