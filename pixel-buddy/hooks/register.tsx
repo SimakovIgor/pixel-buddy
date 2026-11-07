@@ -2,7 +2,7 @@ import type { EngineInterface, Register, RenderElement, ResolveInput, Timer } fr
 
 import type { BandProps } from './band-client'
 
-import { FULL, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, vibeOf } from './buddy'
+import { FULL, REPO, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, vibeOf } from './buddy'
 import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
 import { FACTS, factOf, sayingMsOf } from './facts'
 import type { Fact } from './facts'
@@ -38,6 +38,7 @@ const SYNC_EVERY_FRAMES = 15
 const AGENTS_EVERY_FRAMES = 3
 const COMMAND = 'buddy'
 const FRAME_MS = 200
+const CLIENT_SILENT_FRAMES = 60000 / FRAME_MS
 const CHATTER_GAP_MS = 20000
 const SLEEP_AFTER_MS = 180000
 const FOOTER_RESERVE = 96
@@ -104,6 +105,9 @@ let lastFrameAt = 0
 let isTicking = false
 let timerGeneration = 0
 let frames = 0
+let clientKey = CLIENT_KEY
+let clientRestarts = 0
+let clientHeardFrame: number | null = null
 let cols = WIDTH
 let jumpAt: number | null = null
 let messages = 0
@@ -567,6 +571,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                 <Text dimColor>{countOf(found)} of {TROPHIES.length} · menu → trophies</Text>
             </Box>
             <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
+            <Text dimColor>{`a ⭐ on ${REPO} helps others find it`}</Text>
         </Box>
     )
 }
@@ -850,8 +855,10 @@ const frame = async ($: EngineInterface): Promise<void> => {
         await syncShared($)
     }
     if (buddy === null || !isShown(now)) {
+        clientHeardFrame = null
         return
     }
+    restartSilentClient($)
     if (footerAt === 0 && !isAboveChecked && now - startedAt > FOOTER_WAIT_MS) {
         isAboveChecked = true
         $.ui.invalidate('ui.render')
@@ -863,6 +870,16 @@ const frame = async ($: EngineInterface): Promise<void> => {
             $.ui.invalidate('ui.render')
         }
     }
+}
+
+const restartSilentClient = ($: EngineInterface): void => {
+    if (clientHeardFrame === null || frames - clientHeardFrame <= CLIENT_SILENT_FRAMES) {
+        return
+    }
+    clientRestarts += 1
+    clientKey = `${CLIENT_KEY}-${clientRestarts}`
+    clientHeardFrame = null
+    $.ui.invalidate('ui.render')
 }
 
 const tick = async ($: EngineInterface): Promise<void> => {
@@ -1119,7 +1136,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     if (arg === 'debug') {
         return [
             `frames ${frames}, last frame ${Math.round(now - lastFrameAt)} ms ago`,
-            `drawing: ${isClientMode ? 'client' : 'not drawn yet'}`,
+            `drawing: ${isClientMode ? 'client' : 'not drawn yet'}${clientRestarts === 0 ? '' : `, restarted ${clientRestarts} times after it stopped answering`}`,
             `clicks heard: ${messages}${lastMessage === '' ? '' : `, last: ${lastMessage}`}`,
             `menu: ${lastMenuKey || 'never pressed'}`,
             `card: ${cardAt === null ? 'closed' : `open ${Math.round((now - cardAt) / 1000)} s, ${cardDrawnAt >= cardAt ? 'drawn above the prompt' : isCardInChat ? 'sent to the chat' : 'not drawn yet'}`}`,
@@ -1211,7 +1228,7 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
             <Box flexDirection="row">
                 {theirs}
                 <Text> </Text>
-                {h('Client', { key: CLIENT_KEY, module: './band-client.tsx', props, width: cols, height: props.rows })}
+                {h('Client', { key: clientKey, module: './band-client.tsx', props, width: cols, height: props.rows })}
             </Box>
         )
     }
@@ -1220,7 +1237,7 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
         <Box flexDirection="column">
             {theirs}
             <Box flexDirection="row" justifyContent="flex-end">
-                {h('Client', { key: CLIENT_KEY, module: './band-client.tsx', props, width: cols, height: props.rows })}
+                {h('Client', { key: clientKey, module: './band-client.tsx', props, width: cols, height: props.rows })}
             </Box>
         </Box>
     )
@@ -1385,11 +1402,15 @@ export const register: Register = on => {
     }).catch(($, e, next) => next(e))
 
     on('ui.message', async ($, e, next) => {
-        if (e.element !== CLIENT_KEY) {
+        if (e.element !== clientKey) {
             return next(e)
         }
-        const now = await $.clock.now()
+        clientHeardFrame = frames
         const kind = (e.data as { type?: string } | null)?.type
+        if (kind === 'alive') {
+            return {}
+        }
+        const now = await $.clock.now()
         messages += 1
         lastMessage = `${kind ?? 'unknown'} ${new Date(now).toLocaleTimeString()}`
         lastSeenAt = now

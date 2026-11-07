@@ -60,6 +60,7 @@ type BandState = {
 }
 
 const FRAME_MS = 50
+const ALIVE_MS = 5000
 const WALK_SPEED = 0.007
 const CHASE_SPEED = 0.016
 const FACE_DEADZONE = 3
@@ -454,20 +455,28 @@ const BuddyBand: ClientModule<BandProps, BandState> = (props, surface) => {
     if (surface.state === undefined || live === null) {
         live = initialOf(props, now)
         surface.setState(live)
+        let postedAt = 0
+        const post = (data: JsonValue): void => {
+            postedAt = Date.now()
+            surface.post(data)
+        }
         surface.every(FRAME_MS, () => {
             if (live === null || latest === null) {
                 return
             }
             try {
                 const now = Date.now()
-                live = advance(live, latest, now, surface.post)
+                live = advance(live, latest, now, post)
                 const frame = paint(viewOf(live, latest, now)).join(',')
                 if (frame !== shownFrame) {
                     shownFrame = frame
                     surface.setState(live)
                 }
+                if (now - postedAt >= ALIVE_MS) {
+                    post({ type: 'alive' })
+                }
             } catch (error) {
-                report(surface.post, 'tick', error)
+                report(post, 'tick', error)
             }
         })
         surface.onPointer(event => {
@@ -475,10 +484,10 @@ const BuddyBand: ClientModule<BandProps, BandState> = (props, surface) => {
                 return
             }
             try {
-                live = onPointer(live, latest, event, surface.post, Date.now())
+                live = onPointer(live, latest, event, post, Date.now())
                 surface.setState(live)
             } catch (error) {
-                report(surface.post, 'pointer', error)
+                report(post, 'pointer', error)
             }
         })
     }

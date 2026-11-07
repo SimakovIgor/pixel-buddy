@@ -1,11 +1,9 @@
-import { levelOf, rarityOf } from './buddy'
+import { REPO, levelOf, rarityOf } from './buddy'
 import type { Buddy } from './buddy'
 import { colorsOf } from './scene'
 import { speciesOf } from './species'
 import { TROPHIES, countOf, emojisOf } from './trophies'
 import type { Found } from './trophies'
-
-export const REPO = 'github.com/SimakovIgor/pixel-buddy'
 
 const BACKDROPS = ['⬛', '⬜', '🟦', '🟪']
 

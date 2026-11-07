@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { cardOf, fullnessOf, hatch, levelOf, vibeOf } from './buddy'
 import type { Buddy } from './buddy'
@@ -778,6 +778,7 @@ test('levels need ten xp more each time, and the card shows how far the next one
     const card = cardOf({ ...NOODLE, xp: 33, belly: { value: 20, at: 0 } } as Buddy, 0)
     expect(card).toContain('level 3   ▰▱▱▱▱▱▱▱▱▱ 3/30 xp, earned from your work')
     expect(card).toContain('belly     ██░░░░░░░░ 20%, hungry: right click → feed')
+    expect(card.split('\n').at(-1)).toBe('like your buddy? a ⭐ on github.com/SimakovIgor/pixel-buddy helps others find it')
 })
 
 test('the belly empties slowly over hours, never below zero, and a new egg starts full', () => {
@@ -1025,6 +1026,7 @@ test('the right click menu starts with a summary line, card opens one framed car
     expect(card).toContain('"borderStyle":"round"')
     expect(card).toContain('trophies 🦉 ')
     expect(card).toContain('menu → trophies')
+    expect(card).toContain('a ⭐ on github.com/SimakovIgor/pixel-buddy helps others find it')
     expect(toasts[0]).toBe('Card opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
     expect(again).toBeTruthy()
     expect(menuOpen).toContain('"label":"hide card"')
@@ -1494,6 +1496,107 @@ test('on the desktop the band is drawn in the monospaced face and the bubble wit
     expect(texts.filter(text => text.mono !== true)).toEqual([])
     expect(texts.map(text => String(text.children)).join('')).toContain('crunch!')
     expect(texts.map(text => String(text.children)).join('')).not.toMatch(/[╭╮╰╯│├┤]/)
+})
+
+test('the band drawing says it is alive when it has sent nothing else for a while, never on top of a click', () => {
+    const band: BandProps = {
+        cols: 64, rows: 3, species: 'octopus', rarity: 'common', mood: 'idle', moodAt: 0, isWorking: false, typingAt: 0,
+        bubble: null, hearts: [], agents: 0, hatchAt: null, leave: null, jumpAt: null, action: null,
+        season: null, menu: null, snack: null, isShiny: false, vibe: 'content', trophy: null, isDesktop: false,
+    }
+    const posts: unknown[] = []
+    let tickFn = () => undefined as void
+    let pointerFn = (_: object) => undefined as void
+    const elements = { Box: (props: object) => ({ type: 'Box', props }), Text: (props: object) => ({ type: 'Text', props }) }
+    const surface = {
+        state: undefined,
+        setState: () => undefined,
+        every: (_: number, fn: () => void) => {
+            tickFn = fn
+        },
+        onPointer: (fn: (event: object) => void) => {
+            pointerFn = fn
+        },
+        post: (data: unknown) => posts.push(data),
+        elements,
+    }
+
+    BuddyBand(band, surface as unknown as Parameters<typeof BuddyBand>[1])
+    tickFn()
+    tickFn()
+    const quiet = [...posts]
+    posts.length = 0
+    const fresh = { ...surface, state: undefined }
+    BuddyBand(band, fresh as unknown as Parameters<typeof BuddyBand>[1])
+    pointerFn({ type: 'down', button: 'right', x: 60, y: 1 })
+    tickFn()
+
+    expect(quiet).toEqual([{ type: 'alive' }])
+    expect(posts).toEqual([{ type: 'menu', key: 'open' }])
+})
+
+test('a band drawing that stops answering for a minute is started again under a new key', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: clock.now() }, affection: { value: 60, at: clock.now() } } })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'alive' }, { in: 'buddy-band' })
+    await clock.advance(50000)
+    await ui.post({ type: 'alive' }, { in: 'buddy-band' })
+    await clock.advance(50000)
+    await ui.redraw()
+    const answering = (await ui.find({ type: 'Client' }))?.key
+    await clock.advance(15000)
+    await ui.redraw()
+    const restarted = (await ui.find({ type: 'Client' }))?.key
+    const debug = await $.command.run({ command: 'buddy', args: 'debug' } as Parameters<typeof $.command.run>[0])
+    await ui.unmount()
+
+    expect(answering).toBe('buddy-band')
+    expect(restarted).toBe('buddy-band-1')
+    expect(JSON.stringify(debug)).toContain('restarted 1 times after it stopped answering')
+    expect(JSON.stringify(debug)).toContain('clicks heard: 0')
+})
+
+test('a buddy hidden for a while is not taken for a drawing that stopped answering', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.toast', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: clock.now() }, affection: { value: 60, at: clock.now() } } })
+    const buddy = (args: string) => $.command.run({ command: 'buddy', args } as Parameters<typeof $.command.run>[0])
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'alive' }, { in: 'buddy-band' })
+    await buddy('off')
+    await clock.advance(70000)
+    await buddy('on')
+    await clock.advance(1000)
+    await ui.redraw()
+    const shown = (await ui.find({ type: 'Client' }))?.key
+    await ui.unmount()
+
+    expect(shown).toBe('buddy-band')
 })
 
 test('every fact fits the bubble in parts of 30 characters, and all of them come once before any repeats', () => {

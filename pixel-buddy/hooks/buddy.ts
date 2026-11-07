@@ -2,6 +2,8 @@ import { isSnarky } from './lines'
 import { SPECIES, SPRITE_W, speciesOf } from './species'
 import type { SpeciesId } from './species'
 
+export const REPO = 'github.com/SimakovIgor/pixel-buddy'
+
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
 export const STAT_NAMES = ['DEBUGGING', 'PATIENCE', 'CHAOS', 'WISDOM', 'SNARK'] as const
@@ -227,6 +229,8 @@ export const cardOf = (buddy: Buddy, now: number, mood: Mood | null = null): str
         '',
         `personality: ${MOODS[peak]}`,
         isSnarky(peak) ? 'with CHAOS or SNARK on top it teases you' : 'it cheers you on; a buddy with CHAOS or SNARK on top teases instead',
+        '',
+        `like your buddy? a ⭐ on ${REPO} helps others find it`,
     ].join('\n')
 }
 

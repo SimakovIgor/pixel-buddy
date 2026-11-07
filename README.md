@@ -23,6 +23,8 @@ you hatch stays in your nest, and nothing leaves your machine.
 The egg hatches in the footer right away. In the desktop app: + next to the prompt box, Plugins, Add marketplace
 `SimakovIgor/pixel-buddy`, Add plugin. Update and removal are in the plugin's [README](pixel-buddy/README.md#install).
 
+If your buddy made you smile, a ⭐ helps other people find it
+
 ## A quick look
 
 Click it to pet it, double click for its own move, click an empty spot to throw a ball:
