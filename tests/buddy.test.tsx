@@ -7,6 +7,7 @@ import { BUBBLE_MS, paint } from './scene'
 import { SPECIES } from './species'
 import { commitTrophiesAt, nextTally } from './trophies'
 import { FACTS, FACT_PART_MAX, factOf, sayingMsOf } from './facts'
+import { setLanguage } from './i18n'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
 import BuddyBand from './band-client'
@@ -777,7 +778,7 @@ test('levels need ten xp more each time, and the card shows how far the next one
     ])
     const card = cardOf({ ...NOODLE, xp: 33, belly: { value: 20, at: 0 } } as Buddy, 0)
     expect(card).toContain('level 3   ▰▱▱▱▱▱▱▱▱▱ 3/30 xp, earned from your work')
-    expect(card).toContain('belly     ██░░░░░░░░ 20%, hungry: right click → feed')
+    expect(card).toContain('belly     ██░░░░░░░░ 20%, hungry: /buddy feed')
     expect(card.split('\n').at(-1)).toBe('like your buddy? a ⭐ on github.com/SimakovIgor/pixel-buddy helps others find it')
 })
 
@@ -843,7 +844,7 @@ test('the buddy walks to a fallen snack and eats it by itself', async ($, on) =>
     await ui.unmount()
 })
 
-test('feeding from the menu gives a berry to a hungry buddy, a full one says no thanks', async ($, on) => {
+test('/buddy feed gives a berry to a hungry buddy, a full one says no thanks', async ($, on) => {
     const now = Date.now()
     stubEngine(on, () => now)
     const store: Record<string, unknown> = { buddy: { ...NOODLE, belly: { value: 95, at: now } } }
@@ -852,7 +853,7 @@ test('feeding from the menu gives a berry to a hungry buddy, a full one says no 
 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
-    await ui.post({ type: 'menu', key: 'feed' }, { in: 'buddy-band' })
+    await $.command.run({ command: 'buddy', args: 'feed' } as Parameters<typeof $.command.run>[0])
     await ui.redraw()
     const full = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
     store.buddy = { ...NOODLE, belly: { value: 10, at: now } }
@@ -898,7 +899,7 @@ test('a shiny buddy wears other colors and twinkles, and its card says so', () =
 test('the mood says what matters most first: hunger, then tiredness, then loneliness, then joy', () => {
     const fine = { fullness: 80, affection: 50, workedMs: 0, joy: null }
 
-    expect(vibeOf({ ...fine, fullness: 10, workedMs: 3 * 3600000 })).toEqual({ vibe: 'hungry', why: 'belly 10%, a berry from the menu helps' })
+    expect(vibeOf({ ...fine, fullness: 10, workedMs: 3 * 3600000 })).toEqual({ vibe: 'hungry', why: 'belly 10%, work or /buddy feed fills it' })
     expect(vibeOf({ ...fine, workedMs: 2 * 3600000 + 600000, affection: 10 })).toEqual({ vibe: 'tired', why: '2h 10m of work without a break, a short walk helps' })
     expect(vibeOf({ ...fine, affection: 10, joy: { what: 'a commit', agoMs: 1000 } }).vibe).toBe('lonely')
     expect(vibeOf({ ...fine, joy: { what: 'green tests', agoMs: 12 * 60000 } })).toEqual({ vibe: 'joyful', why: 'green tests 12 min ago' })
@@ -1658,7 +1659,7 @@ test('half a minute into a long answer the buddy tells a fact part by part, then
     expect(store.facts).toEqual({ next: 5, isOff: false })
 })
 
-test('facts in the menu turn them off for good, the store keeps it, and a long answer then passes in silence', async ($, on) => {
+test('facts in the settings menu turn them off for good, the store keeps it, and a long answer then passes in silence', async ($, on) => {
     let now = Date.now()
     stubEngine(on, () => now, true)
     const store: Record<string, unknown> = { buddy: { ...NOODLE }, facts: { next: 0 } }
@@ -1669,6 +1670,7 @@ test('facts in the menu turn them off for good, the store keeps it, and a long a
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
     await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.post({ type: 'menu', key: 'settings' }, { in: 'buddy-band' })
     const menu = await bandAt(ui)
     await ui.post({ type: 'menu', key: 'facts' }, { in: 'buddy-band' })
     const off = await bandAt(ui)
@@ -1702,6 +1704,84 @@ test('/buddy fact tells one right away, in the chat and in the bubble, and /budd
     expect(band).toContain(first)
     expect(back.text).toContain('tells a fact now and then')
     expect(store.facts).toEqual({ next: 8, isOff: false })
+})
+
+const menuKeysOf = (band: string): string[] => [...band.matchAll(/"key":"([^"]+)","label"/g)].map(found => found[1] ?? '')
+
+test('the menu keeps the basics, settings holds language, theme, facts and hide, and the language switch is saved in /config', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    const saved: Array<{ key: string; value: unknown }> = []
+    on('config.list', () => ({ value: [{ key: 'pixel-buddy.language', label: 'Language · Язык', kind: 'choice' as const, value: 'English', options: ['English', 'Русский'], provider: { plugin: 'pixel-buddy', tier: 'user' as const }, isLocked: false }] }))
+    on('config.set', (_$, e) => {
+        saved.push({ key: e.key, value: e.value })
+
+        return { value: e.value }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const main = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'settings' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const settings = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'language' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const switched = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const russian = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.unmount()
+
+    expect(menuKeysOf(main)).toEqual(['card', 'nest', 'trophies', 'share', 'settings', 'close'])
+    expect(menuKeysOf(settings)).toEqual(['language', 'theme', 'facts', 'hide', 'back'])
+    expect(settings).toContain('"label":"Русский"')
+    expect(switched).toContain('привет! теперь я говорю по-русски')
+    expect(saved).toEqual([{ key: 'pixel-buddy.language', value: 'Русский' }])
+    expect(menuKeysOf(russian)).toEqual(['card', 'nest', 'trophies', 'share', 'settings', 'close'])
+    expect(russian).toContain('"label":"карточка"')
+})
+
+test('a buddy set to Русский speaks Russian: the card, the menu, a fact and the help', { options: { language: 'Русский' } }, async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE }, facts: { next: 7, isOff: true } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    setLanguage('Русский')
+    const told = factOf(7).join(' ')
+    setLanguage('English')
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+    const fact = await $.command.run({ command: 'buddy', args: 'fact' } as Parameters<typeof $.command.run>[0])
+    const help = await $.command.run({ command: 'buddy', args: 'help' } as Parameters<typeof $.command.run>[0])
+    await ui.post({ type: 'menu', key: 'open' }, { in: 'buddy-band' })
+    await ui.redraw()
+    const menu = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
+    await ui.unmount()
+
+    expect(card.text).toContain('Noodle · ниндзя · ★☆☆☆☆ обычный')
+    expect(card.text).toContain('характер: непредсказуемый, любит красную сборку')
+    expect(card.text).toContain('нравится питомец? ⭐ на github.com/SimakovIgor/pixel-buddy поможет другим найти мод')
+    expect(fact.text).toBe(`А знаешь? ${told}`)
+    expect(help.text).toContain('Питомец живет на кликах:')
+    expect(menu).toContain('"label":"карточка"')
+    expect(menu).toContain('"header":"Noodle · ур 1 ')
+})
+
+test('in Russian every fact part fits the bubble, each English fact has its own Russian one, and a duck is a she', () => {
+    setLanguage('Русский')
+    const parts = Array.from({ length: FACTS.length }, (_, step) => factOf(step)).flat()
+    const distinct = new Set(Array.from({ length: FACTS.length }, (_, step) => factOf(step).join(' '))).size
+    const duck = cardOf({ ...NOODLE, species: 'duck', rarity: 'rare' } as Buddy, 0).split('\n')[0]
+    setLanguage('English')
+
+    expect(parts.filter(part => [...part].length > FACT_PART_MAX)).toEqual([])
+    expect(distinct).toBe(FACTS.length)
+    expect(duck).toContain('Noodle · утка · ★★★☆☆ редкая')
 })
 
 test('a subagent that starts makes the buddy say so, and the same helpers still running say nothing more', async ($, on) => {

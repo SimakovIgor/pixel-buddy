@@ -2,7 +2,7 @@ import { rarityOf } from './buddy'
 import type { Rarity } from './buddy'
 import { canvasOf, dot, scale, toCells, write } from './scene'
 import type { Canvas } from './scene'
-import { TROPHIES } from './trophies'
+import { TROPHIES, textOf } from './trophies'
 import type { Found, Trophy, TrophyId } from './trophies'
 
 export const BADGE = 10
@@ -136,7 +136,7 @@ export const trophyCaseOf = (found: Found, width: number): TrophyCase => {
         const x0 = (i % perRow) * (BADGE + GAP)
         const row0 = Math.floor(i / perRow) * LINE_ROWS
         drawBadge(c, trophy, isFound, x0, row0 * 2)
-        const label = isFound || !trophy.isSecret ? trophy.label : '???'
+        const label = isFound || !trophy.isSecret ? textOf(trophy).label : '???'
         write(c, x0 + Math.floor((BADGE - label.length) / 2), row0 + BADGE / 2, label, isFound ? rarityOf(trophy.rarity).color : LABEL_DIM)
     })
 

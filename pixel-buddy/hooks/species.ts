@@ -1,3 +1,5 @@
+import { isRu } from './i18n'
+
 export type SpeciesId = 'cat' | 'duck' | 'ghost' | 'octopus' | 'axolotl' | 'robot' | 'ninja' | 'penguin'
 
 export type Species = {
@@ -260,4 +262,21 @@ export const SPECIES: readonly Species[] = [
     },
 ]
 
-export const speciesOf = (id: string): Species => SPECIES.find(one => one.id === id) ?? (SPECIES[0] as Species)
+const RU: Record<SpeciesId, { name: string; pet: string; isFem: boolean }> = {
+    cat: { name: 'кот', pet: 'мррр', isFem: false },
+    duck: { name: 'утка', pet: 'кря!', isFem: true },
+    ghost: { name: 'призрак', pet: 'бу~', isFem: false },
+    octopus: { name: 'осьминог', pet: 'буль', isFem: false },
+    axolotl: { name: 'аксолотль', pet: 'млем', isFem: false },
+    robot: { name: 'робот', pet: 'бип-буп', isFem: false },
+    ninja: { name: 'ниндзя', pet: 'кия!', isFem: false },
+    penguin: { name: 'пингвин', pet: 'нут-нут!', isFem: false },
+}
+
+export const speciesOf = (id: string): Species => {
+    const species = SPECIES.find(one => one.id === id) ?? (SPECIES[0] as Species)
+
+    return isRu() ? { ...species, name: RU[species.id].name, pet: RU[species.id].pet } : species
+}
+
+export const byGender = (id: string, masculine: string, feminine: string): string => (RU[speciesOf(id).id].isFem ? feminine : masculine)

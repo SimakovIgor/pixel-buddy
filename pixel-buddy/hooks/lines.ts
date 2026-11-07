@@ -1,4 +1,5 @@
 import type { StatName } from './buddy'
+import { isRu } from './i18n'
 
 export type Moment = 'error' | 'loop' | 'marathon' | 'plan' | 'agents' | 'commit' | 'green' | 'thinking' | 'back' | 'hungry' | 'tired' | 'lonely'
 
@@ -55,12 +56,63 @@ const LINES: Record<Moment, { calm: Lines; snark: Lines }> = {
     },
 }
 
+const LINES_RU: Record<Moment, { calm: Lines; snark: Lines }> = {
+    error: {
+        calm: ['ой. бывает', 'это упало, давай посмотрим', 'красное. без паники'],
+        snark: ['exit 1. классика', 'а ошибку читать пробовал?', 'смело. не сработало'],
+    },
+    loop: {
+        calm: ['третий раз одно и то же. новая идея?', 'снова та же ошибка. шаг назад?'],
+        snark: ['определение безумия, раунд 3', 'мы тут уже были. у меня есть футболка'],
+    },
+    marathon: {
+        calm: ['готово! это было долго', 'фух. закончили'],
+        snark: ['готово. я немного постарел', 'наконец. я чуть не уснул'],
+    },
+    plan: {
+        calm: ['все пункты отмечены!', 'план выполнен. отличная работа'],
+        snark: ['все готово. подозрительно гладко', 'план выполнен. кто ты такой?'],
+    },
+    agents: {
+        calm: ['присмотрю за малышами', 'помощники вышли!'],
+        snark: ['миньоны отправлены', 'отправляем стажеров'],
+    },
+    commit: {
+        calm: ['классный коммит!', 'сохранено. приятно'],
+        snark: ['закоммичено. назад дороги нет', 'коммит! в рамочку'],
+    },
+    green: {
+        calm: ['зелено! все хорошо', 'тесты прошли ✓'],
+        snark: ['зелено. а они точно что-то проверяют?', 'прошли. с первого раза??'],
+    },
+    thinking: {
+        calm: ['хмм, думаю вместе с тобой', 'большая задача. не спеши'],
+        snark: ['все еще думает. неси печеньки', 'загружаю мозг…'],
+    },
+    back: {
+        calm: ['о, ты снова тут!', 'я скучал'],
+        snark: ['смотрите, кто пришел', 'я ничего не трогал. честно'],
+    },
+    hungry: {
+        calm: ['в животе урчит… перекусим?', 'ягодка бы не помешала'],
+        snark: ['я бы съел целую сборку', 'покорми, и я посмотрю твой PR'],
+    },
+    tired: {
+        calm: ['два часа без перерыва. потянемся?', 'может, короткая прогулка? я подожду'],
+        snark: ['мои пиксели затекли. перерыв?', 'даже CI отдыхает'],
+    },
+    lonely: {
+        calm: ['погладишь?', 'я скучаю по твоим кликам'],
+        snark: ['я не навязываюсь. погладь', 'клик был бы кстати. просто говорю'],
+    },
+}
+
 const SNARKY: readonly StatName[] = ['SNARK', 'CHAOS']
 
 export const isSnarky = (stat: StatName): boolean => SNARKY.includes(stat)
 
 export const lineFor = (moment: Moment, peak: StatName, roll: number): string => {
-    const pool = LINES[moment][isSnarky(peak) ? 'snark' : 'calm']
+    const pool = (isRu() ? LINES_RU : LINES)[moment][isSnarky(peak) ? 'snark' : 'calm']
 
     return pool[Math.floor(roll * pool.length) % pool.length] ?? ''
 }

@@ -1,5 +1,6 @@
-import { levelOf } from './buddy'
+import { levelOf, rarityOf } from './buddy'
 import type { Buddy, Rarity } from './buddy'
+import { isRu, t } from './i18n'
 
 export type TrophyId =
     | 'night-owl'
@@ -51,7 +52,26 @@ export const DEEP_THOUGHT = 42
 
 const DAY_MS = 24 * 3600000
 
-export const trophyOf = (id: TrophyId): Trophy => TROPHIES.find(one => one.id === id) ?? (TROPHIES[0] as Trophy)
+const RU: Record<TrophyId, { name: string; label: string; hint: string }> = {
+    'night-owl': { name: 'Ночная сова', label: 'Сова', hint: 'коммит с 2 до 5 ночи' },
+    friday: { name: 'Деплой в пятницу', label: 'Пятница', hint: 'коммит в пятницу после 18:00' },
+    comeback: { name: 'Камбэк', label: 'Камбэк', hint: 'зеленые тесты вскоре после трех падений подряд' },
+    ball: { name: 'Чемпион по мячу', label: 'Мячик', hint: 'десять пойманных мячей за минуту' },
+    regular: { name: 'Завсегдатай', label: 'Неделя', hint: 'еду каждый день целую неделю' },
+    grown: { name: 'Совсем взрослый', label: 'Взрослый', hint: 'питомца 10 уровня' },
+    shiny: { name: 'Блеск!', label: 'Блеск!', hint: 'блестящего питомца в гнезде' },
+    legend: { name: 'Легенда', label: 'Легенда', hint: 'легендарного питомца в гнезде' },
+    'deep-thought': { name: 'Глубокая мысль', label: 'Мыслитель', hint: '42-й ответ за одну сессию' },
+    'rubber-duck': { name: 'Резиновая уточка', label: 'Уточка', hint: 'ласку утки, пока все падает' },
+    leet: { name: '1337', label: '1337', hint: 'коммит в 13:37' },
+    hive: { name: 'Улей', label: 'Улей', hint: 'восемь субагентов сразу' },
+    spooky: { name: 'Жуткий коммит', label: 'Жуть', hint: 'коммит на Хэллоуин' },
+    'new-year': { name: 'С новым коммитом', label: 'Новый год', hint: 'коммит в час вокруг полуночи в Новый год' },
+}
+
+export const textOf = (trophy: Trophy): Trophy => (isRu() ? { ...trophy, ...RU[trophy.id] } : trophy)
+
+export const trophyOf = (id: TrophyId): Trophy => textOf(TROPHIES.find(one => one.id === id) ?? (TROPHIES[0] as Trophy))
 
 const isTrophyId = (value: string): value is TrophyId => TROPHIES.some(one => one.id === value)
 
@@ -118,5 +138,8 @@ export const emojisOf = (found: Found): string => foundOrder(found).map(one => o
 export const toastOf = (id: TrophyId, found: Found): string => {
     const trophy = trophyOf(id)
 
-    return `${trophy.emoji} Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found. Menu → share to show it off`
+    return t(
+        `${trophy.emoji} Trophy: ${trophy.name}, ${trophy.rarity}, for ${trophy.hint}. ${countOf(found)} of ${TROPHIES.length} found. Menu → share to show it off`,
+        `${trophy.emoji} Трофей: ${trophy.name}, ${rarityOf(trophy.rarity).label}, за ${trophy.hint}. Найдено ${countOf(found)} из ${TROPHIES.length}. Меню → поделиться, чтобы похвастаться`,
+    )
 }

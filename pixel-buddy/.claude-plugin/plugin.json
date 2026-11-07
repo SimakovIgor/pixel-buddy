@@ -1,7 +1,7 @@
 {
   "name": "pixel-buddy",
   "displayName": "Pixel Buddy",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "description": "A pixel pet for your Claude Code footer: it hatches, eats what your work drops, levels up, earns rare trophies, does tricks, naps when you are away and plays on clicks",
   "license": "MIT",
   "author": {
@@ -20,5 +20,17 @@
   ],
   "documentationUrl": "https://github.com/SimakovIgor/pixel-buddy/tree/main/pixel-buddy#readme",
   "supportUrl": "https://github.com/SimakovIgor/pixel-buddy/issues",
-  "privacyPolicyUrl": "https://github.com/SimakovIgor/pixel-buddy/tree/main/pixel-buddy#what-it-runs-and-sends"
+  "privacyPolicyUrl": "https://github.com/SimakovIgor/pixel-buddy/tree/main/pixel-buddy#what-it-runs-and-sends",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language · Язык",
+      "description": "What your buddy speaks · На каком языке говорит питомец",
+      "options": [
+        "English",
+        "Русский"
+      ],
+      "default": "English"
+    }
+  }
 }

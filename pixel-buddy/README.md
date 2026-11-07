@@ -22,6 +22,8 @@ At the prompt of a terminal session, then answer `y` and pick the user scope to 
   Marketplaces tab
 - **Remove:** `/plugin uninstall pixel-buddy`. Your buddies stay in `~/.claude/plugins/store`, delete the `pixel-buddy`
   file there to start from a new egg
+- **Language:** English or Русский. Pick it when you install, later in the menu under `settings`, or in `/config`, the
+  `Language · Язык` row of pixel-buddy. The buddy, its menu, card, trophies and facts all switch
 
 Sessions opened before the install get it after `/reload-plugins`.
 
@@ -47,7 +49,7 @@ A buddy hatches with a name, a rarity and five stats, all rolled once:
 Each answer from Claude drops a cookie into the strip, green tests drop a fish, a commit or a finished plan drops a
 cake. The buddy walks over and eats it. Snacks give xp, xp gives levels, and each level needs ten xp more than the last.
 
-It never starves: the belly empties over a night, a hungry buddy asks for a snack, and a berry from the menu fills it.
+It never starves: the belly empties over a night, a hungry buddy asks for a snack, and your work or `/buddy feed` fills it.
 
 ## Its mood
 
@@ -59,7 +61,7 @@ The card tells the mood and what helps:
 | content · | fed, petted, rested | its usual self | nothing |
 | tired zz | two hours of work without a ten minute break | walks slower, half shuts its eyes, suggests a stretch | a short break |
 | lonely ? | nobody pets it for a day | asks for a click | pet it, play ball |
-| hungry ~ | the belly is low | asks for a snack | a berry from the menu |
+| hungry ~ | the belly is low | asks for a snack | your work or `/buddy feed` |
 
 ## Your nest
 
@@ -148,13 +150,10 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | Item | What it does |
 | --- | --- |
 | `card` | its card in a frame above the prompt: portrait, mood, level, belly, love and the trophy shelf |
-| `feed` | a berry. A full buddy says no thanks |
 | `buddies` | your nest: bring any buddy back to this window or hatch a new egg |
 | `trophies` | your trophy case above the prompt |
 | `share` | a card of your buddy and its trophies on the clipboard |
-| `theme` | calendar, winter, halloween or off |
-| `facts` | facts while Claude works, on or off |
-| `hide` | hides it in this window. `/buddy on` brings it back |
+| `settings` | language (English or Русский), theme (calendar, winter, halloween or off), facts on or off, and hide, which hides it in this window until `/buddy on` |
 
 ## Commands
 

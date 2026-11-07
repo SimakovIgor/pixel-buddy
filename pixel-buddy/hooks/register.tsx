@@ -2,17 +2,18 @@ import type { EngineInterface, Register, RenderElement, ResolveInput, Timer } fr
 
 import type { BandProps } from './band-client'
 
-import { FULL, REPO, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, vibeOf } from './buddy'
+import { FULL, REPO, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, rarityWordOf, vibeLabelOf, vibeOf } from './buddy'
 import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
 import { FACTS, factOf, sayingMsOf } from './facts'
+import { isRu, plural, setLanguage, t } from './i18n'
 import type { Fact } from './facts'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
 import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, encode, portraitOf } from './scene'
 import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
-import { SPECIES, speciesOf } from './species'
+import { SPECIES, byGender, speciesOf } from './species'
 import type { SpeciesId } from './species'
-import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, emojisOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, toastOf, trophyOf } from './trophies'
+import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, emojisOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, textOf, toastOf, trophyOf } from './trophies'
 import type { Found, TrophyId } from './trophies'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
@@ -58,6 +59,7 @@ const CARD_MS = 60000
 const CARD_DRAW_WAIT_MS = 1500
 const TROPHY_SAY_MS = 1500
 const NOMS = ['nom!', 'yum!', 'crunch!', 'mmm!']
+const NOMS_RU = ['ням!', 'вкусно!', 'хрум!', 'ммм!']
 
 const MOOD_MS: Partial<Record<Mood, number>> = { shock: 1600, dizzy: 3200, happy: 2600, love: 2600 }
 
@@ -112,7 +114,7 @@ let cols = WIDTH
 let jumpAt: number | null = null
 let messages = 0
 let theme: Theme = 'auto'
-let menuPage: 'main' | 'nest' | 'species' | null = null
+let menuPage: 'main' | 'nest' | 'species' | 'settings' | null = null
 let nest: Buddy[] = []
 let sessionId = ''
 let seats: Record<string, number> = {}
@@ -156,32 +158,44 @@ const menuOf = (): Menu | null => {
         return null
     }
     if (menuPage === 'species') {
-        const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: ownedOf(one.id) === undefined ? one.name : `${one.name} ✓`, isOn: false }))
+        const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: ownedOf(one.id) === undefined ? speciesOf(one.id).name : `${speciesOf(one.id).name} ✓`, isOn: false }))
 
-        return { items: [...items, { key: 'hatch:random', label: 'random', isOn: false }, { key: 'back', label: '←', isOn: false }], header: 'pick a new species, ✓ calls yours back' }
+        return { items: [...items, { key: 'hatch:random', label: t('random', 'случайный'), isOn: false }, { key: 'back', label: '←', isOn: false }], header: t('pick a new species, ✓ calls yours back', 'выбери вид, ✓ вернет твоего') }
     }
     if (menuPage === 'nest') {
         const items: MenuItem[] = [buddy, ...nest].map(one => ({
             key: one === buddy ? 'close' : `pick:${one.hatchedAt}`,
-            label: `${one.name} ${speciesOf(one.species).name} lv${levelOf(one.xp ?? 0).level}${one.isShiny === true ? ' ✦' : ''}`,
+            label: `${one.name} ${speciesOf(one.species).name} ${t('lv', 'ур')}${levelOf(one.xp ?? 0).level}${one.isShiny === true ? ' ✦' : ''}`,
             isOn: one === buddy,
         }))
         const isFull = nest.length + 1 >= NEST_MAX
 
         return {
-            items: [...items, { key: isFull ? 'full' : 'new', label: isFull ? 'nest is full' : '+ new egg', isOn: false }, { key: 'back', label: '←', isOn: false }],
-            header: `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}. Pick one for this window`,
+            items: [...items, { key: isFull ? 'full' : 'new', label: isFull ? t('nest is full', 'гнездо полное') : t('+ new egg', '+ новое яйцо'), isOn: false }, { key: 'back', label: '←', isOn: false }],
+            header: t(
+                `your nest: ${nest.length + 1} ${nest.length === 0 ? 'buddy' : 'buddies'}. Pick one for this window`,
+                `в гнезде ${nest.length + 1} ${plural(nest.length + 1, 'питомец', 'питомца', 'питомцев')}, выбери для окна`,
+            ),
+        }
+    }
+    if (menuPage === 'settings') {
+        return {
+            items: [
+                { key: 'language', label: t('Русский', 'English'), isOn: false },
+                { key: 'theme', label: `${t('theme', 'тема')}: ${themeNameOf(theme)}`, isOn: theme !== 'auto' && theme !== 'off' },
+                { key: 'facts', label: t('facts', 'факты'), isOn: isFactsOn },
+                { key: 'hide', label: t('hide', 'спрятать'), isOn: false },
+                { key: 'back', label: '←', isOn: false },
+            ],
+            header: t('settings', 'настройки'),
         }
     }
     const items: MenuItem[] = [
-        cardAt === null ? { key: 'card', label: 'card', isOn: false } : { key: 'card-close', label: 'hide card', isOn: true },
-        { key: 'feed', label: 'feed', isOn: false },
-        { key: 'nest', label: 'buddies', isOn: false },
-        caseAt === null ? { key: 'trophies', label: 'trophies', isOn: false } : { key: 'trophies-close', label: 'hide trophies', isOn: true },
-        { key: 'share', label: 'share', isOn: false },
-        { key: 'theme', label: 'theme', isOn: theme !== 'auto' && theme !== 'off' },
-        { key: 'facts', label: 'facts', isOn: isFactsOn },
-        { key: 'hide', label: 'hide', isOn: false },
+        cardAt === null ? { key: 'card', label: t('card', 'карточка'), isOn: false } : { key: 'card-close', label: t('hide card', 'скрыть карточку'), isOn: true },
+        { key: 'nest', label: t('buddies', 'питомцы'), isOn: false },
+        caseAt === null ? { key: 'trophies', label: t('trophies', 'трофеи'), isOn: false } : { key: 'trophies-close', label: t('hide trophies', 'скрыть трофеи'), isOn: true },
+        { key: 'share', label: t('share', 'поделиться'), isOn: false },
+        { key: 'settings', label: t('settings', 'настройки'), isOn: false },
         { key: 'close', label: '×', isOn: false },
     ]
 
@@ -301,6 +315,8 @@ const seasonOf = (now: number): Season => {
 }
 
 const isTheme = (value: unknown): value is Theme => THEMES.includes(value as Theme)
+
+const themeNameOf = (value: Theme): string => (isRu() ? { auto: 'авто', winter: 'зима', halloween: 'хэллоуин', off: 'выкл' }[value] : value)
 
 const readTheme = async ($: EngineInterface): Promise<Theme> => {
     const stored = await $.store.get(THEME_KEY)
@@ -496,21 +512,21 @@ const cherish = ($: EngineInterface, amount: number, now: number): void => {
     }
 }
 
-const PANEL_HINT = 'Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt'
+const panelHint = (): string => t('Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt', 'Не видно? Нажми на строку "▸ plugin panel hidden" прямо над полем ввода')
 
 const openCase = ($: EngineInterface, now: number): void => {
     caseAt = now
     cardAt = null
-    sayText('my trophies are up there ↑', now)
-    $.ui.toast(`Trophy case opened above the prompt. ${PANEL_HINT}`)
+    sayText(t('my trophies are up there ↑', 'мои трофеи вон там ↑'), now)
+    $.ui.toast(t(`Trophy case opened above the prompt. ${panelHint()}`, `Витрина трофеев открыта над полем ввода. ${panelHint()}`))
 }
 
 const openCard = ($: EngineInterface, now: number): void => {
     cardAt = now
     caseAt = null
     isCardInChat = false
-    sayText('my card is up there ↑', now)
-    $.ui.toast(`Card opened above the prompt. ${PANEL_HINT}`)
+    sayText(t('my card is up there ↑', 'моя карточка вон там ↑'), now)
+    $.ui.toast(t(`Card opened above the prompt. ${panelHint()}`, `Карточка открыта над полем ввода. ${panelHint()}`))
 }
 
 const cardInChat = ($: EngineInterface, now: number): void => {
@@ -519,7 +535,7 @@ const cardInChat = ($: EngineInterface, now: number): void => {
     }
     isCardInChat = true
     cardOf(buddy, now, feelingOf(now)).split('\n').slice(0, 7).filter(line => line !== '').forEach(line => $.ui.log(line))
-    sayText('here is my card, in the chat', now)
+    sayText(t('here is my card, in the chat', 'вот моя карточка, в чате'), now)
 }
 
 const hexOf = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
@@ -547,31 +563,31 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                 {picture}
                 <Box flexDirection="column">
                     <Text color={color} weight="bold">{buddy.name}{buddy.isShiny === true ? ' ✦' : ''}</Text>
-                    <Text>{species.name} · {stars} {rarity.label}</Text>
-                    <Text>{VIBE_MARKS[feeling.vibe]} {feeling.vibe}: {feeling.why}</Text>
+                    <Text>{species.name} · {stars} {rarityWordOf(buddy.rarity, buddy.species)}</Text>
+                    <Text>{VIBE_MARKS[feeling.vibe]} {vibeLabelOf(feeling.vibe)}: {feeling.why}</Text>
                     <Box flexDirection="row">
-                        <Text>level {level} </Text>
+                        <Text>{t('level', 'уровень')} {level} </Text>
                         <Text color={color}>{meter(into, need)}</Text>
                         <Text> {into}/{need} xp</Text>
                     </Box>
                     <Box flexDirection="row">
-                        <Text>belly </Text>
+                        <Text>{t('belly ', 'сытость ')}</Text>
                         <Text color="#ffb35c">{bar(belly)}</Text>
                         <Text> {belly}%</Text>
                     </Box>
                     <Box flexDirection="row">
-                        <Text>love  </Text>
+                        <Text>{t('love  ', 'любовь  ')}</Text>
                         <Text color="#ff7aa8">{bar(love)}</Text>
                         <Text> {love}%</Text>
                     </Box>
                 </Box>
             </Box>
             <Box flexDirection="row">
-                <Text>trophies {countOf(found) === 0 ? '' : `${emojisOf(found)} `}</Text>
-                <Text dimColor>{countOf(found)} of {TROPHIES.length} · menu → trophies</Text>
+                <Text>{t('trophies', 'трофеи')} {countOf(found) === 0 ? '' : `${emojisOf(found)} `}</Text>
+                <Text dimColor>{t(`${countOf(found)} of ${TROPHIES.length} · menu → trophies`, `${countOf(found)} из ${TROPHIES.length} · меню → трофеи`)}</Text>
             </Box>
-            <Text dimColor>this window's buddy · {nest.length + 1} in your nest · menu → hide card</Text>
-            <Text dimColor>{`a ⭐ on ${REPO} helps others find it`}</Text>
+            <Text dimColor>{t(`this window's buddy · ${nest.length + 1} in your nest · menu → hide card`, `питомец этого окна · в гнезде ${nest.length + 1} · меню → скрыть карточку`)}</Text>
+            <Text dimColor>{t(`a ⭐ on ${REPO} helps others find it`, `⭐ на ${REPO} поможет другим найти мод`)}</Text>
         </Box>
     )
 }
@@ -591,10 +607,10 @@ const badgeTextOf = ($: EngineInterface, e: ResolveInput, width: number): Render
                 <Box key={`row-${r}`} flexDirection="row">
                     {row.map(one => {
                         if (found[one.id] !== undefined) {
-                            return <Box key={one.id} width={CASE_CELL}><Text color={hexOf(rarityOf(one.rarity).color)}>{one.emoji} {one.label}</Text></Box>
+                            return <Box key={one.id} width={CASE_CELL}><Text color={hexOf(rarityOf(one.rarity).color)}>{one.emoji} {textOf(one).label}</Text></Box>
                         }
 
-                        return <Box key={one.id} width={CASE_CELL}><Text dimColor>{one.isSecret ? '?  ???' : `○  ${one.label}`}</Text></Box>
+                        return <Box key={one.id} width={CASE_CELL}><Text dimColor>{one.isSecret ? '?  ???' : `○  ${textOf(one).label}`}</Text></Box>
                     })}
                 </Box>
             ))}
@@ -617,9 +633,12 @@ const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
     return (
         <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown === null ? room : shown.columns + 4}>
             <Box flexDirection="row">
-                <Text color={hexOf(CASE_GOLD)} weight="bold">trophies </Text>
-                <Text>{countOf(found)} of {TROPHIES.length}</Text>
-                <Text dimColor>{latest === undefined ? ' · rare moments of your work earn them' : ` · the latest: ${latest.name}`} · menu → share shows them off</Text>
+                <Text color={hexOf(CASE_GOLD)} weight="bold">{t('trophies ', 'трофеи ')}</Text>
+                <Text>{t(`${countOf(found)} of ${TROPHIES.length}`, `${countOf(found)} из ${TROPHIES.length}`)}</Text>
+                <Text dimColor>
+                    {latest === undefined ? t(' · rare moments of your work earn them', ' · их дают редкие моменты твоей работы') : t(` · the latest: ${latest.name}`, ` · последний: ${textOf(latest).name}`)}
+                    {t(' · menu → share shows them off', ' · меню → поделиться покажет их')}
+                </Text>
             </Box>
             {badges}
         </Box>
@@ -638,13 +657,13 @@ const feedByHand = (now: number): string => {
         return ''
     }
     if (fullnessOf(buddy, now) >= FULL) {
-        sayText('so full… maybe later', now)
+        sayText(t('so full… maybe later', 'живот полный… может, позже'), now)
 
-        return `${buddy.name} is full`
+        return t(`${buddy.name} is full`, `${buddy.name} больше не хочет есть`)
     }
     dropSnack('berry', now)
 
-    return `${buddy.name} got a berry`
+    return t(`${buddy.name} got a berry`, `ягода для ${buddy.name}`)
 }
 
 const grow = ($: EngineInterface, now: number, kind: SnackKind): void => {
@@ -665,14 +684,15 @@ const grow = ($: EngineInterface, now: number, kind: SnackKind): void => {
     }
     setMood('happy', now)
     if (after > before) {
-        cheer(`a new level, ${after}`, now)
-        sayText(`level ${after}!`, now)
+        cheer(t(`a new level, ${after}`, `новый уровень, ${after}`), now)
+        sayText(t(`level ${after}!`, `уровень ${after}!`), now)
         action = null
         celebrate(now)
 
         return
     }
-    sayText(NOMS[Math.floor(random() * NOMS.length)] ?? 'nom!', now)
+    const noms = isRu() ? NOMS_RU : NOMS
+    sayText(noms[Math.floor(random() * noms.length)] ?? 'nom!', now)
 }
 
 const isFreeFor = (current: Mood): boolean => current === 'idle' || current === 'think' || current === 'tool'
@@ -769,7 +789,7 @@ const landJump = (now: number): void => {
     }
     jumpAt = null
     setMood('happy', now)
-    sayText('wheee!', now)
+    sayText(t('wheee!', 'уиии!'), now)
 }
 
 const nag = (now: number): void => {
@@ -970,7 +990,7 @@ const bringBack = async ($: EngineInterface, now: number, hatchedAt: number): Pr
     const chosen = nest.find(one => one.hatchedAt === hatchedAt)
     if (chosen !== undefined) {
         await swapTo($, now, wake(chosen, now), false)
-        arrivalLine = `${chosen.name} is back!`
+        arrivalLine = t(`${chosen.name} is back!`, `${chosen.name} ${byGender(chosen.species, 'вернулся', 'вернулась')}!`)
     }
 }
 
@@ -998,13 +1018,41 @@ const TEST_RUNNERS = /(^|[\s;&/])(gradlew\s+(\S+\s+)*(?<!-x\s)(\w*[tT]est|check)
 
 export const isTestRun = (command: string): boolean => !command.includes('|') && TEST_RUNNERS.test(command)
 
-const help = (): string => [
+const HELP_RU = [
+    'Питомец живет на кликах:',
+    '  клик               погладить',
+    '  двойной клик       его трюк',
+    '  перетаскивание     перенести',
+    '  клик по пустому    бросить мяч',
+    '  правый клик        меню: карточка, питомцы, трофеи, поделиться и настройки (язык, тема, факты, спрятать)',
+    '',
+    'Он ест то, что остается от работы: печенье за ответ, рыбу за зеленые тесты, торт за коммит.',
+    'Еда дает опыт и уровни. Каждый вылупившийся питомец остается в гнезде, по одному каждого вида, у каждого окна свой.',
+    'За редкие моменты дают трофеи, шесть из них секретные.',
+    'Пока Claude готовит длинный ответ, питомец рассказывает факт про космос, Землю, код, математику или философию.',
+    '',
+    'Команды:',
+    '  /buddy               полная карточка со статами и характером',
+    '  /buddy trophies      открыть витрину трофеев',
+    '  /buddy share         скопировать карточку питомца, чтобы похвастаться',
+    '  /buddy name <имя>    переименовать',
+    '  /buddy feed          ягода',
+    '  /buddy fact          факт прямо сейчас',
+    '  /buddy facts on|off  факты, пока Claude работает',
+    '  /buddy on            вернуть после hide',
+    '  /buddy hatch [cat, duck, ghost, octopus, axolotl, robot, ninja, penguin]',
+    '  /buddy theme [auto, winter, halloween, off] · /buddy off',
+    '',
+    'Язык: правый клик → настройки, или /config, строка pixel-buddy.',
+]
+
+const help = (): string => isRu() ? HELP_RU.join('\n') : [
     'Your buddy lives on clicks:',
     '  click             pet it',
     '  double click      its own move',
     '  drag              carry it',
     '  click empty spot  throw a ball',
-    '  right click       menu: card, feed, buddies, trophies, share, theme, facts, hide',
+    '  right click       menu: card, buddies, trophies, share and settings (language, theme, facts, hide)',
     '',
     'It eats what your work drops: a cookie for an answer, a fish for green tests, a cake for a commit.',
     'Snacks give xp and levels. Every buddy you hatch stays in your nest, one of each species, each window keeps its own.',
@@ -1022,6 +1070,8 @@ const help = (): string => [
     '  /buddy on            bring it back after hide',
     '  /buddy hatch [cat, duck, ghost, octopus, axolotl, robot, ninja, penguin]',
     '  /buddy theme [auto, winter, halloween, off] · /buddy off',
+    '',
+    'Language, English or Русский: right click → settings, or /config, the pixel-buddy row.',
 ].join('\n')
 
 const speciesList = (): string => SPECIES.map(one => one.id).join(', ')
@@ -1032,10 +1082,11 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
     const current = buddy as Buddy
     if (arg === '' || arg === 'card') {
-        const others = nest.map(one => `${one.name} the ${speciesOf(one.species).name}, lv${levelOf(one.xp ?? 0).level}`).join(' · ')
-        const nestLine = nest.length === 0 ? 'your nest: just this one so far' : `also in your nest: ${others}`
+        const others = nest.map(one => t(`${one.name} the ${speciesOf(one.species).name}, lv${levelOf(one.xp ?? 0).level}`, `${one.name}, ${speciesOf(one.species).name}, ур${levelOf(one.xp ?? 0).level}`)).join(' · ')
+        const nestLine = nest.length === 0 ? t('your nest: just this one so far', 'в гнезде пока только этот питомец') : t(`also in your nest: ${others}`, `еще в гнезде: ${others}`)
+        const menuLine = t('Menu: right click on the strip\n/buddy name <new name> · /buddy feed · /buddy on · /buddy help', 'Меню: правый клик по полоске\n/buddy name <имя> · /buddy feed · /buddy on · /buddy help')
 
-        return `${cardOf(current, now, feelingOf(now))}\n\n${nestLine}\nMenu: right click on the strip\n/buddy name <new name> · /buddy feed · /buddy on · /buddy help`
+        return `${cardOf(current, now, feelingOf(now))}\n\n${nestLine}\n${menuLine}`
     }
     if (arg === 'feed') {
         return feedByHand(now)
@@ -1045,18 +1096,21 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         cardAt = null
         $.ui.invalidate('ui.render')
 
-        return `${countOf(found)} of ${TROPHIES.length} trophies, the case is open above the prompt. Don't see it? Click "▸ plugin panel hidden" there`
+        return t(
+            `${countOf(found)} of ${TROPHIES.length} trophies, the case is open above the prompt. Don't see it? Click "▸ plugin panel hidden" there`,
+            `${countOf(found)} из ${TROPHIES.length} трофеев, витрина открыта над полем ввода. Не видно? Нажми там "▸ plugin panel hidden"`,
+        )
     }
     if (arg === 'share') {
         const text = shareOf(current, found)
         const { isCopied } = await $.ui.copy({ text })
 
-        return `${isCopied ? 'Copied, paste it in any chat' : 'Copy it from here'}:\n\n${text}`
+        return `${isCopied ? t('Copied, paste it in any chat', 'Скопировано, вставь в любой чат') : t('Copy it from here', 'Скопируй отсюда')}:\n\n${text}`
     }
     if (arg === 'pet') {
         pet(now)
 
-        return `${current.name} is happy`
+        return t(`${current.name} is happy`, `${current.name} ${byGender(current.species, 'доволен', 'довольна')}`)
     }
     if (arg === 'theme') {
         const wanted = rest[0]?.toLowerCase()
@@ -1065,14 +1119,14 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         $.ui.invalidate('ui.render')
 
         return {
-            auto: 'Theme follows the calendar',
-            winter: 'Santa hat on, snow is falling',
-            halloween: 'Boo! Witch hat on',
-            off: 'No theme',
+            auto: t('Theme follows the calendar', 'Тема по календарю'),
+            winter: t('Santa hat on, snow is falling', 'Шапка Санты надета, идет снег'),
+            halloween: t('Boo! Witch hat on', 'Бу! Шляпа ведьмы надета'),
+            off: t('No theme', 'Без темы'),
         }[theme]
     }
     if (arg === 'fact') {
-        return `Did you know? ${tellFact($, now).join(' ')}`
+        return `${t('Did you know?', 'А знаешь?')} ${tellFact($, now).join(' ')}`
     }
     if (arg === 'facts') {
         const wanted = rest[0]?.toLowerCase()
@@ -1080,47 +1134,55 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         await saveFacts($)
         $.ui.invalidate('ui.render')
 
-        return isFactsOn ? `${current.name} tells a fact now and then while Claude works on a long answer` : `No more facts. /buddy facts on brings them back`
+        return isFactsOn
+            ? t(`${current.name} tells a fact now and then while Claude works on a long answer`, `${current.name} иногда рассказывает факт, пока Claude готовит длинный ответ`)
+            : t('No more facts. /buddy facts on brings them back', 'Больше никаких фактов. /buddy facts on вернет их')
     }
     if (arg === 'jump') {
-        return startJump(now) ? 'Jump!' : 'Not enough room to jump'
+        return startJump(now) ? t('Jump!', 'Прыг!') : t('Not enough room to jump', 'Мало места для прыжка')
     }
     if (arg === 'demo') {
         demoAt = now
         demoStep = 0
         saidAt = 0
 
-        return 'Showing every reaction, 25 seconds'
+        return t('Showing every reaction, 25 seconds', 'Показываю все реакции, 25 секунд')
     }
     if (arg === 'hatch') {
         const wanted = speciesFor(rest[0])
         if (rest[0] !== undefined && wanted === undefined) {
-            return `No such species. There are: ${speciesList()}`
+            return t(`No such species. There are: ${speciesList()}`, `Такого вида нет. Есть: ${speciesList()}`)
         }
         const hatching = await rehatch($, now, wanted?.id)
         if (hatching === 'hatched') {
-            return `Hatching… ${current.name} waits in your nest`
+            return t(`Hatching… ${current.name} waits in your nest`, `Вылупляется… ${current.name} ждет в гнезде`)
         }
         if (hatching === 'full') {
-            return `Your nest is full: ${NEST_MAX} buddies`
+            return t(`Your nest is full: ${NEST_MAX} buddies`, `Гнездо полное: ${NEST_MAX} ${plural(NEST_MAX, 'питомец', 'питомца', 'питомцев')}`)
         }
         if (hatching === 'every') {
-            return `You have one of every species already. Menu → buddies brings any of them back`
+            return t('You have one of every species already. Menu → buddies brings any of them back', 'У тебя уже есть питомец каждого вида. Меню → питомцы вернет любого')
         }
         if (hatching.hatchedAt === current.hatchedAt) {
-            return `${current.name} is your ${speciesOf(current.species).name} already, one of each species`
+            return t(
+                `${current.name} is your ${speciesOf(current.species).name} already, one of each species`,
+                `${current.name} уже ${byGender(current.species, 'твой', 'твоя')} ${speciesOf(current.species).name}, по одному каждого вида`,
+            )
         }
         await bringBack($, now, hatching.hatchedAt)
 
-        return `You have a ${speciesOf(hatching.species).name} already: ${hatching.name} comes back from the nest`
+        return t(
+            `You have a ${speciesOf(hatching.species).name} already: ${hatching.name} comes back from the nest`,
+            `У тебя уже есть ${speciesOf(hatching.species).name}: ${hatching.name} возвращается из гнезда`,
+        )
     }
     if (arg === 'name' && rest.length > 0) {
         buddy = { ...current, name: rest.join(' ').slice(0, 14) }
         buddyVersion += 1
         await $.store.set(petKey(buddy.hatchedAt), buddy)
-        sayText(`I'm ${buddy.name} now`, now)
+        sayText(t(`I'm ${buddy.name} now`, `теперь я ${buddy.name}`), now)
 
-        return `Renamed to ${buddy.name}`
+        return t(`Renamed to ${buddy.name}`, `Новое имя: ${buddy.name}`)
     }
     if (arg === 'off' || arg === 'on') {
         leave = arg === 'off' && !isOff ? { species: current.species, at: now } : null
@@ -1128,10 +1190,12 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         isOff = arg === 'off'
         $.ui.invalidate('ui.render')
         if (isOff) {
-            $.ui.toast(`${current.name} is hiding in this window. /buddy on brings it back`)
+            $.ui.toast(t(`${current.name} is hiding in this window. /buddy on brings it back`, `${current.name} ${byGender(current.species, 'спрятался', 'спряталась')} в этом окне. /buddy on вернет`))
         }
 
-        return isOff ? `${current.name} is hiding. /buddy on brings it back` : `${current.name} is back`
+        return isOff
+            ? t(`${current.name} is hiding. /buddy on brings it back`, `${current.name} ${byGender(current.species, 'спрятался', 'спряталась')}. /buddy on вернет`)
+            : t(`${current.name} is back`, `${current.name} ${byGender(current.species, 'вернулся', 'вернулась')}`)
     }
     if (arg === 'debug') {
         return [
@@ -1146,6 +1210,18 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
 
     return help()
+}
+
+const switchLanguage = async ($: EngineInterface, now: number): Promise<void> => {
+    const next = isRu() ? 'English' : 'Русский'
+    setLanguage(next)
+    sayText(t('hi! I speak English now', 'привет! теперь я говорю по-русски'), now)
+    const rows = await $.config.list().catch(() => [])
+    const row = rows.find(one => one.key.startsWith('pixel-buddy') && one.key.endsWith('.language'))
+    const saved = row === undefined ? { deny: 'no row' } : await $.config.set({ key: row.key, value: next }).catch(() => ({ deny: 'failed' }))
+    if (saved.deny !== undefined) {
+        $.ui.toast(t('English in this window only: /config, the pixel-buddy row, keeps it', 'Русский только в этом окне: закрепить можно в /config, строка pixel-buddy'))
+    }
 }
 
 const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<void> => {
@@ -1166,14 +1242,18 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     } else if (key === 'trophies-close') {
         menuPage = null
         caseAt = null
-    } else if (key === 'feed') {
+    } else if (key === 'settings') {
+        menuPage = 'settings'
+    } else if (key === 'language') {
         menuPage = null
-        feedByHand(now)
+        await switchLanguage($, now)
     } else if (key === 'share' && buddy !== null) {
         menuPage = null
         const { isCopied } = await $.ui.copy({ text: shareOf(buddy, found) })
-        sayText(isCopied ? 'show me off!' : 'try /buddy share', now)
-        $.ui.toast(isCopied ? `A card of ${buddy.name} is on your clipboard: paste it in any chat to show it off` : 'Could not copy here, /buddy share prints the card')
+        sayText(isCopied ? t('show me off!', 'похвастайся мной!') : t('try /buddy share', 'попробуй /buddy share'), now)
+        $.ui.toast(isCopied
+            ? t(`A card of ${buddy.name} is on your clipboard: paste it in any chat to show it off`, `Карточка ${buddy.name} в буфере обмена: вставь в любой чат и похвастайся`)
+            : t('Could not copy here, /buddy share prints the card', 'Здесь не скопировать, /buddy share выведет карточку'))
     } else if (key === 'nest') {
         menuPage = 'nest'
         nest = (await readPets($)).filter(one => one.hatchedAt !== buddy?.hatchedAt)
@@ -1181,7 +1261,7 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         menuPage = null
         await bringBack($, now, Number(key.slice('pick:'.length)))
     } else if (key === 'full') {
-        sayText(`my nest is full: ${NEST_MAX} buddies`, now)
+        sayText(t(`my nest is full: ${NEST_MAX} buddies`, `гнездо полное: ${NEST_MAX} ${plural(NEST_MAX, 'питомец', 'питомца', 'питомцев')}`), now)
     } else if (key === 'new') {
         menuPage = 'species'
     } else if (key.startsWith('hatch:')) {
@@ -1190,14 +1270,14 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
         await perform($, now, 'hatch', species === 'random' ? [] : [species])
     } else if (key === 'theme') {
         await perform($, now, 'theme', [])
-        sayText(`theme: ${theme}`, now)
+        sayText(`${t('theme', 'тема')}: ${themeNameOf(theme)}`, now)
     } else if (key === 'facts') {
         menuPage = null
         await perform($, now, 'facts', [])
         if (isFactsOn) {
             tellFact($, now)
         } else {
-            sayText('ok, no more facts', now)
+            sayText(t('ok, no more facts', 'ладно, без фактов'), now)
         }
     } else if (key === 'hide') {
         menuPage = null
@@ -1243,12 +1323,13 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
     )
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+    setLanguage(options.language)
     on('session.start', async ($, e, next) => {
         const now = await $.clock.now()
         theme = await readTheme($)
         lastSeenAt = now
-        await $.command.register({ name: COMMAND, description: 'Your pixel buddy. Most things are clicks: right click it for the menu', argumentHint: 'help · name <new name> · on' })
+        await $.command.register({ name: COMMAND, description: t('Your pixel buddy. Most things are clicks: right click it for the menu', 'Твой пиксельный питомец. Почти все через клики: правый клик открывает меню'), argumentHint: t('help · name <new name> · on', 'help · name <имя> · on') })
         await loadBuddy($, now)
         found = foundOf(await $.store.get(TROPHY_KEY))
         applyFacts(await $.store.get(FACTS_KEY).catch(() => undefined))
@@ -1268,7 +1349,7 @@ export const register: Register = on => {
         lastSeenAt = now
 
         return { text: await perform($, now, ALIASES[word] ?? word, rest) }
-    }).catch(() => ({ text: 'pixel-buddy hit an error here, /buddy debug shows the last one' }))
+    }).catch(() => ({ text: t('pixel-buddy hit an error here, /buddy debug shows the last one', 'в pixel-buddy случилась ошибка, /buddy debug покажет последнюю') }))
 
     on('prompt.edit', ($, e, next) => {
         void $.clock.now().then(now => {
@@ -1375,13 +1456,13 @@ export const register: Register = on => {
             say('commit', now)
             celebrate(now)
             dropSnack('cake', now)
-            cheer('a commit', now)
+            cheer(t('a commit', 'коммит'), now)
             commitTrophiesAt(new Date(now)).forEach(id => award($, id, now))
         } else if (e.tool === 'Bash' && isTestRun(e.command)) {
             say('green', now)
             celebrate(now)
             dropSnack('fish', now)
-            cheer('green tests', now)
+            cheer(t('green tests', 'зеленые тесты'), now)
             if (now - dizzyAt < COMEBACK_MS) {
                 award($, 'comeback', now)
             }
@@ -1393,7 +1474,7 @@ export const register: Register = on => {
                 say('plan', now, true)
                 celebrate(now)
                 dropSnack('cake', now)
-                cheer('a finished plan', now)
+                cheer(t('a finished plan', 'готовый план'), now)
             }
             todoDone = isDone
         }
@@ -1447,10 +1528,10 @@ export const register: Register = on => {
             const toy = (e.data as { kind?: string } | null)?.kind
             if (toy === 'shuriken') {
                 action = { kind: 'swing', at: now - SWING_MS * 0.4 }
-                sayText('hai!', now)
+                sayText(t('hai!', 'кия!'), now)
             } else {
                 setMood('happy', now)
-                sayText('got it!', now)
+                sayText(t('got it!', buddy === null ? 'поймал!' : byGender(buddy.species, 'поймал!', 'поймала!')), now)
                 catches = [...catches.filter(at => now - at < BALL_WINDOW_MS), now]
                 if (catches.length >= BALLS) {
                     award($, 'ball', now)

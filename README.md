@@ -23,6 +23,8 @@ you hatch stays in your nest, and nothing leaves your machine.
 The egg hatches in the footer right away. In the desktop app: + next to the prompt box, Plugins, Add marketplace
 `SimakovIgor/pixel-buddy`, Add plugin. Update and removal are in the plugin's [README](pixel-buddy/README.md#install).
 
+It speaks English or Russian: pick the language when you install it, or later with a right click → settings.
+
 If your buddy made you smile, a ⭐ helps other people find it
 
 ## A quick look

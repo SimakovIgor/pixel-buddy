@@ -1,7 +1,8 @@
-import { REPO, levelOf, rarityOf } from './buddy'
+import { REPO, levelOf, rarityOf, rarityWordOf } from './buddy'
 import type { Buddy } from './buddy'
+import { t } from './i18n'
 import { colorsOf } from './scene'
-import { speciesOf } from './species'
+import { byGender, speciesOf } from './species'
 import { TROPHIES, countOf, emojisOf } from './trophies'
 import type { Found } from './trophies'
 
@@ -58,14 +59,18 @@ export const gridOf = (buddy: Buddy): string[] => {
 
 export const shareOf = (buddy: Buddy, found: Found): string => {
     const species = speciesOf(buddy.species).name
-    const shine = buddy.isShiny === true ? ' shiny' : ''
+    const shine = buddy.isShiny === true ? t(' shiny', byGender(buddy.species, ' блестящий', ' блестящая')) : ''
     const count = countOf(found)
-    const trophies = `🏆 ${count} of ${TROPHIES.length} trophies${count === 0 ? '' : `: ${emojisOf(found)}`}`
+    const emojis = count === 0 ? '' : `: ${emojisOf(found)}`
+    const level = levelOf(buddy.xp ?? 0).level
 
     return [
-        `${buddy.name}, my ${rarityOf(buddy.rarity).label}${shine} ${species} · level ${levelOf(buddy.xp ?? 0).level}`,
+        t(
+            `${buddy.name}, my ${rarityOf(buddy.rarity).label}${shine} ${species} · level ${level}`,
+            `${buddy.name}, ${byGender(buddy.species, 'мой', 'моя')} ${rarityWordOf(buddy.rarity, buddy.species)}${shine} ${species} · уровень ${level}`,
+        ),
         ...gridOf(buddy),
-        trophies,
-        `Pixel Buddy for Claude Code: ${REPO}`,
+        t(`🏆 ${count} of ${TROPHIES.length} trophies${emojis}`, `🏆 ${count} из ${TROPHIES.length} трофеев${emojis}`),
+        t(`Pixel Buddy for Claude Code: ${REPO}`, `Pixel Buddy для Claude Code: ${REPO}`),
     ].join('\n')
 }
