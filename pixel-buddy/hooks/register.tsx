@@ -39,7 +39,8 @@ const SYNC_EVERY_FRAMES = 15
 const AGENTS_EVERY_FRAMES = 3
 const COMMAND = 'buddy'
 const FRAME_MS = 200
-const CLIENT_SILENT_FRAMES = 60000 / FRAME_MS
+const CLIENT_SILENT_FRAMES = 15000 / FRAME_MS
+const CLIENT_RESTARTS_MAX = 3
 const CHATTER_GAP_MS = 20000
 const SLEEP_AFTER_MS = 180000
 const FOOTER_RESERVE = 96
@@ -893,7 +894,7 @@ const frame = async ($: EngineInterface): Promise<void> => {
 }
 
 const restartSilentClient = ($: EngineInterface): void => {
-    if (clientHeardFrame === null || frames - clientHeardFrame <= CLIENT_SILENT_FRAMES) {
+    if (clientHeardFrame === null || clientRestarts >= CLIENT_RESTARTS_MAX || frames - clientHeardFrame <= CLIENT_SILENT_FRAMES) {
         return
     }
     clientRestarts += 1
@@ -1200,7 +1201,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     if (arg === 'debug') {
         return [
             `frames ${frames}, last frame ${Math.round(now - lastFrameAt)} ms ago`,
-            `drawing: ${isClientMode ? 'client' : 'not drawn yet'}${clientRestarts === 0 ? '' : `, restarted ${clientRestarts} times after it stopped answering`}`,
+            `drawing: ${isClientMode ? 'client' : 'not drawn yet'}${clientRestarts === 0 ? '' : `, restarted ${clientRestarts} times after it stopped answering${clientRestarts >= CLIENT_RESTARTS_MAX ? ', gave up' : ''}`}`,
             `clicks heard: ${messages}${lastMessage === '' ? '' : `, last: ${lastMessage}`}`,
             `menu: ${lastMenuKey || 'never pressed'}`,
             `card: ${cardAt === null ? 'closed' : `open ${Math.round((now - cardAt) / 1000)} s, ${cardDrawnAt >= cardAt ? 'drawn above the prompt' : isCardInChat ? 'sent to the chat' : 'not drawn yet'}`}`,
@@ -1301,6 +1302,7 @@ const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: stri
         return theirs
     }
     isClientMode = true
+    clientHeardFrame = clientHeardFrame ?? frames
     lastPropsKey = JSON.stringify(props)
     const { Box, Text } = $.ui.resolve(e)
     if (isFooter) {

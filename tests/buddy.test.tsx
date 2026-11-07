@@ -1536,7 +1536,7 @@ test('the band drawing says it is alive when it has sent nothing else for a whil
     expect(posts).toEqual([{ type: 'menu', key: 'open' }])
 })
 
-test('a band drawing that stops answering for a minute is started again under a new key', async ($, on) => {
+test('a band drawing that stops answering for 15 seconds is started again under a new key', async ($, on) => {
     const clock = mock.clock(on, { now: Date.now() })
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
@@ -1553,12 +1553,12 @@ test('a band drawing that stops answering for a minute is started again under a 
     await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
     const ui = await $.ui.mount(BAND)
     await ui.post({ type: 'alive' }, { in: 'buddy-band' })
-    await clock.advance(50000)
+    await clock.advance(10000)
     await ui.post({ type: 'alive' }, { in: 'buddy-band' })
-    await clock.advance(50000)
+    await clock.advance(10000)
     await ui.redraw()
     const answering = (await ui.find({ type: 'Client' }))?.key
-    await clock.advance(15000)
+    await clock.advance(6000)
     await ui.redraw()
     const restarted = (await ui.find({ type: 'Client' }))?.key
     const debug = await $.command.run({ command: 'buddy', args: 'debug' } as Parameters<typeof $.command.run>[0])
@@ -1568,6 +1568,40 @@ test('a band drawing that stops answering for a minute is started again under a 
     expect(restarted).toBe('buddy-band-1')
     expect(JSON.stringify(debug)).toContain('restarted 1 times after it stopped answering')
     expect(JSON.stringify(debug)).toContain('clicks heard: 0')
+})
+
+test('a band drawing that never answers is started again 15 seconds after it was drawn, three times at most', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: clock.now() }, affection: { value: 60, at: clock.now() } } })
+    const keyAfter = async (ms: number) => {
+        await clock.advance(ms)
+        await ui.redraw()
+
+        return (await ui.find({ type: 'Client' }))?.key
+    }
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    const first = await keyAfter(14000)
+    const second = await keyAfter(2000)
+    const third = await keyAfter(16000)
+    const fourth = await keyAfter(16000)
+    const last = await keyAfter(16000)
+    const debug = await $.command.run({ command: 'buddy', args: 'debug' } as Parameters<typeof $.command.run>[0])
+    await ui.unmount()
+
+    expect([first, second, third, fourth, last]).toEqual(['buddy-band', 'buddy-band-1', 'buddy-band-2', 'buddy-band-3', 'buddy-band-3'])
+    expect(JSON.stringify(debug)).toContain('restarted 3 times after it stopped answering, gave up')
 })
 
 test('a buddy hidden for a while is not taken for a drawing that stopped answering', async ($, on) => {
