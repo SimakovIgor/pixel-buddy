@@ -3,24 +3,37 @@ import { DEFAULT, sameCells } from './scene'
 const UPPER = 0x2580
 const LOWER = 0x2584
 const BLOCK = 0x2588
-const TEXT = 0xd6d3e0
+const THEME_TEXT = -1
 
 const hex = (color: number): string => `#${(color & 0xffffff).toString(16).padStart(6, '0')}`
 
 const xml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+const PALE_STYLE = '.pale { filter: drop-shadow(0 0 0.12px color-mix(in srgb, currentColor 55%, transparent)); } .pale-ink { filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor 55%, transparent)); }'
+
+const isPale = (color: number): boolean => ((color >> 16) & 0xff) * 0.299 + ((color >> 8) & 0xff) * 0.587 + (color & 0xff) * 0.114 > 200
+
+const addShape = (shapes: Map<number, string[]>, color: number, d: string): void => {
+    const list = shapes.get(color) ?? []
+    list.push(d)
+    shapes.set(color, list)
+}
+
+const pathsOf = (shapes: Map<number, string[]>): string =>
+    [...shapes].map(([color, d]) => `<path${isPale(color) ? ' class="pale"' : ''} fill="${hex(color)}" d="${d.join('')}"/>`).join('')
 
 const isPainted = (color: number | undefined): color is number => color !== undefined && color !== DEFAULT && color <= 0xffffff
 
 export const frameSvgOf = (cells: Uint32Array, cols: number, rows: number, px: number): string => {
     const height = rows * 2
     const pixels = new Array<number>(cols * height).fill(-1)
-    const backs: string[] = []
+    const backs = new Map<number, string[]>()
     const texts: string[] = []
     for (let row = 0; row < rows; row++) {
         let run: { x: number; chars: string[]; color: number } | null = null
         const flush = () => {
             if (run !== null) {
-                texts.push(`<text x="${run.x * px}" y="${(row * 2 + 1.55) * px}" textLength="${run.chars.length * px}" lengthAdjust="spacingAndGlyphs" fill="${hex(run.color)}">${xml(run.chars.join(''))}</text>`)
+                texts.push(`<text x="${run.x * px}" y="${(row * 2 + 1.55) * px}" textLength="${run.chars.length * px}" lengthAdjust="spacingAndGlyphs"${run.color !== THEME_TEXT && isPale(run.color) ? ' class="pale-ink"' : ''} fill="${run.color === THEME_TEXT ? 'currentColor' : hex(run.color)}">${xml(run.chars.join(''))}</text>`)
                 run = null
             }
         }
@@ -42,13 +55,13 @@ export const frameSvgOf = (cells: Uint32Array, cols: number, rows: number, px: n
                 continue
             }
             if (isPainted(bg)) {
-                backs.push(`<rect x="${x * px}" y="${row * 2 * px}" width="${px}" height="${2 * px}" fill="${hex(bg)}"/>`)
+                addShape(backs, bg, `M${x} ${row * 2}h1v2h-1z`)
             }
             if (glyph === 0x20 || glyph === 0) {
                 flush()
                 continue
             }
-            const color = isPainted(fg) ? fg : TEXT
+            const color = isPainted(fg) ? fg : THEME_TEXT
             if (run !== null && run.color === color && run.x + run.chars.length === x) {
                 run.chars.push(String.fromCodePoint(glyph))
             } else {
@@ -58,7 +71,7 @@ export const frameSvgOf = (cells: Uint32Array, cols: number, rows: number, px: n
         }
         flush()
     }
-    const rects: string[] = []
+    const runs = new Map<number, string[]>()
     for (let y = 0; y < height; y++) {
         let x = 0
         while (x < cols) {
@@ -68,13 +81,13 @@ export const frameSvgOf = (cells: Uint32Array, cols: number, rows: number, px: n
                 end += 1
             }
             if (color >= 0) {
-                rects.push(`<rect x="${x * px}" y="${y * px}" width="${(end - x) * px}" height="${px}" fill="${hex(color)}"/>`)
+                addShape(runs, color, `M${x} ${y}h${end - x}v1h${x - end}z`)
             }
             x = end
         }
     }
 
-    return `${backs.join('')}${rects.join('')}${texts.join('')}`
+    return `<g transform="scale(${px})">${pathsOf(backs)}${pathsOf(runs)}</g>${texts.join('')}`
 }
 
 const pct = (n: number): string => `${Number(n.toFixed(3))}%`
@@ -108,8 +121,8 @@ export const filmSvgOf = (frames: readonly Uint32Array[], frameMs: number, cols:
         return `<g class="s${k}">${frameSvgOf(shot.cells, cols, rows, px)}</g>`
     })
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${cols * px}" height="${rows * 2 * px}" viewBox="0 0 ${cols * px} ${rows * 2 * px}" shape-rendering="crispEdges"><style>${styles.join(' ')}</style><g font-family="Menlo, Monaco, monospace" font-size="${(px * 1.62).toFixed(1)}">${bodies.join('')}</g></svg>`
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${cols * px}" height="${rows * 2 * px}" viewBox="0 0 ${cols * px} ${rows * 2 * px}" shape-rendering="crispEdges"><style>${PALE_STYLE} ${styles.join(' ')}</style><g font-family="Menlo, Monaco, monospace" font-size="${(px * 1.62).toFixed(1)}">${bodies.join('')}</g></svg>`
 }
 
 export const cellsSvgOf = (cells: Uint32Array, cols: number, rows: number, px: number): string =>
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${cols * px}" height="${rows * 2 * px}" viewBox="0 0 ${cols * px} ${rows * 2 * px}" shape-rendering="crispEdges"><g font-family="Menlo, Monaco, monospace" font-size="${(px * 1.62).toFixed(1)}">${frameSvgOf(cells, cols, rows, px)}</g></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${cols * px}" height="${rows * 2 * px}" viewBox="0 0 ${cols * px} ${rows * 2 * px}" shape-rendering="crispEdges"><style>${PALE_STYLE}</style><g font-family="Menlo, Monaco, monospace" font-size="${(px * 1.62).toFixed(1)}">${frameSvgOf(cells, cols, rows, px)}</g></svg>`

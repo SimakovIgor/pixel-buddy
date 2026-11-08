@@ -58,6 +58,7 @@ export type View = {
     vibe: Vibe
     trophy: TrophyView | null
     isDesktop?: boolean
+    isEditor?: boolean
     growth?: Growth
 }
 
@@ -1208,7 +1209,7 @@ const drawBubble = (c: Canvas, v: View, x0: number): void => {
     }
     write(c, x, 0, `╭${'─'.repeat(width - 2)}╮`, edge)
     write(c, x, 1, isLeft ? '│' : '┤', edge)
-    write(c, x + 2, 1, shown, scale(BUBBLE_TEXT, alpha))
+    write(c, x + 2, 1, shown, v.isEditor === true ? DEFAULT : scale(BUBBLE_TEXT, alpha))
     write(c, x + width - 1, 1, isLeft ? '├─' : '│', edge)
     write(c, x, 2, `╰${'─'.repeat(width - 2)}╯`, edge)
     if (!isLeft) {

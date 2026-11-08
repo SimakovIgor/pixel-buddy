@@ -218,7 +218,10 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
   strip at the right of the footer, or above the prompt where the footer has no room
 - `hooks/band-client.tsx` animates the strip at 20 frames a second and skips frames that did not change
 - `hooks/vscode.ts` turns the same frames into pictures for VS Code and Cursor: the editor gets a new picture up to
-  ten times a second, each carrying the next 600 ms of frames, so the buddy moves as smoothly as in the terminal
+  ten times a second, each carrying the next 600 ms of frames, so the buddy moves as smoothly as in the terminal.
+  Its words take the editor's text color and pale pixels get a faint outline, so it reads on light and dark themes.
+  A few minutes after you leave it sends one still picture and nothing more, so an editor left in the background
+  has nothing to pause
 - `hooks/scene.ts` paints with half-block pixels, two per terminal cell
 - `hooks/species.ts` the sprites, `hooks/buddy.ts` stats and the card, `hooks/lines.ts` what it says,
   `hooks/trophies.ts` the trophies, `hooks/badges.ts` their pixel badges, `hooks/share.ts` the share card
@@ -240,7 +243,9 @@ The plugin is in `pixel-buddy/`, its tests in `tests/`, so installing the plugin
 - **`card` shows nothing:** the panel above the prompt is folded. Click the line `▸ plugin panel hidden` right above
   the prompt to unfold it
 - **Not there in VS Code or Cursor:** update the Claude Code extension, then `/buddy debug` should say `above the
-  prompt asked on: vscode`
+  prompt asked on: vscode`. In Cursor the extension runs in the editor window, not in the Agents window
+- **Only its name in VS Code or Cursor:** the editor paused its pictures for a moment, the buddy is back within a few
+  minutes
 - **Something looks off:** `/buddy debug` shows how it draws, the last click and menu press and the last error
 
 ## License

@@ -115,7 +115,7 @@ let clientRestarts = 0
 let clientHeardFrame: number | null = null
 let stageDrawnAt = 0
 let lastStageKey = ''
-let editorShot: { cols: number; cells: Uint32Array; film: readonly Uint32Array[]; svg: string } | null = null
+let editorShot: { cols: number; cells: Uint32Array; film: readonly Uint32Array[]; svg: string; isStill: boolean } | null = null
 let editorTimer: Timer | null = null
 let wanderPlan: Plan | null = null
 let anchorX = 4
@@ -707,6 +707,7 @@ const editorViewOf = (now: number, offset: number, cols: number, x0: number, pos
         vibe: feelingOf(now).vibe,
         trophy: trophyShow === null ? null : { rarity: trophyOf(trophyShow.id).rarity, age: t - trophyShow.at },
         isDesktop: false,
+        isEditor: true,
         season: seasonOf(now),
         menu: null,
         nap: shown === 'sleep' ? { x: x0, age: Math.max(0, now - lastSeenAt - SLEEP_AFTER_MS) + offset + 2000, wokeAge: null } : null,
@@ -906,11 +907,19 @@ const editorFrameAt = (now: number, cols: number, at: number): Uint32Array => {
 const editorPictureOf = (now: number, cols: number): string => {
     serveFood(now, cols)
     const start = gridOf(now)
+    if (isAwayFromEditor(now)) {
+        const still = editorFrameAt(now, cols, start)
+        if (editorShot === null || !editorShot.isStill || editorShot.cols !== cols || !sameCells(still, editorShot.cells)) {
+            editorShot = { cols, cells: still, film: [still], svg: cellsSvgOf(still, cols, ROWS, EDITOR_PX), isStill: true }
+        }
+
+        return editorShot.svg
+    }
     const film = Array.from({ length: EDITOR_AHEAD_FRAMES }, (_, i) => editorFrameAt(now, cols, start + i * EDITOR_STEP_MS))
     const [cells = new Uint32Array(0)] = film
-    const isSameFilm = editorShot !== null && editorShot.cols === cols && editorShot.film.length === film.length && film.every((one, i) => sameCells(one, editorShot?.film[i] ?? new Uint32Array(0)))
+    const isSameFilm = editorShot !== null && !editorShot.isStill && editorShot.cols === cols && editorShot.film.length === film.length && film.every((one, i) => sameCells(one, editorShot?.film[i] ?? new Uint32Array(0)))
     if (editorShot === null || !isSameFilm) {
-        editorShot = { cols, cells, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX) }
+        editorShot = { cols, cells, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), isStill: false }
     }
 
     return editorShot.svg
@@ -943,7 +952,7 @@ const watchEditorFrames = ($: EngineInterface, now: number): void => {
         }
         settleFood($, at)
         settleToy($, at)
-        if (!isAwayFromEditor(at) && isEditorFrameStale(at)) {
+        if (isAwayFromEditor(at) ? editorShot?.isStill === false : isEditorFrameStale(at)) {
             $.ui.invalidate('ui.render')
         }
     }).catch((error: unknown) => {
@@ -1205,7 +1214,7 @@ const drawEditor = ($: EngineInterface, e: ResolveInput, now: number, bodyColumn
     return (
         <Box key="buddy-stage" flexDirection="column" alignItems="flex-end">
             <Box flexDirection="row" flexWrap="nowrap" alignItems="flex-end" columnGap={1}>
-                <Svg source={strip} alt={`${current.name}, ${speciesOf(current.species).name}${bubble === null ? '' : `: ${bubble.text}`}`} width={cols * EDITOR_PX} height={ROWS * 2 * EDITOR_PX} />
+                <Svg source={strip} alt={`${current.name}, ${speciesOf(current.species).name}, ${t('level', 'уровень')} ${levelOf(current.xp ?? 0).level}${bubble === null ? '' : `: ${bubble.text}`}`} width={cols * EDITOR_PX} height={ROWS * 2 * EDITOR_PX} />
                 <Box flexDirection="column" rowGap={0.25}>
                     <Box flexDirection="row" flexWrap="nowrap" columnGap={1}>
                         {chip('editor-heart', '❤️', 'pet')}
@@ -2021,6 +2030,9 @@ export const register: Register = (on, options) => {
     on('prompt.edit', ($, e, next) => {
         void $.clock.now().then(now => {
             typingAt = now
+            if (editorShot?.isStill === true) {
+                $.ui.invalidate('ui.render')
+            }
         })
 
         return next(e)

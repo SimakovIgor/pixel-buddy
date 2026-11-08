@@ -5,6 +5,7 @@ import type { Buddy } from './buddy'
 import { isTestRun } from './register'
 import { BUBBLE_MS, DEFAULT, colorsOf as speciesColorsOf, paint } from './scene'
 import { SPECIES, SPRITE_W } from './species'
+import { cellsSvgOf } from './vscode'
 import { commitTrophiesAt, nextTally } from './trophies'
 import { FACTS, FACT_PART_MAX, factOf, sayingMsOf } from './facts'
 import { setLanguage } from './i18n'
@@ -47,6 +48,10 @@ const stubEngine = (on: On, clock = () => Date.now(), hasFrames = false) => {
         return <Text>others</Text>
     })
 }
+
+const spansOf = (svg: string, fill: string): Array<{ x: number; w: number }> =>
+    [...svg.matchAll(new RegExp(`<path(?: class="pale")? fill="${fill}" d="([^"]*)"`, 'g'))]
+        .flatMap(found => [...(found[1] ?? '').matchAll(/M(\d+) \d+h(\d+)/g)].map(run => ({ x: Number(run[1]), w: Number(run[2]) })))
 
 test('a new session hatches a buddy above the prompt and keeps it', async ($, on) => {
     stubEngine(on)
@@ -355,6 +360,22 @@ test('left alone, the buddy lies down under its tree with closed eyes and gets u
 })
 
 const NOODLE = { name: 'Noodle', species: 'ninja', rarity: 'common', stats: { DEBUGGING: 20, PATIENCE: 23, CHAOS: 89, WISDOM: 13, SNARK: 63 }, hatchedAt: 0 } as const
+
+test('in VS Code the bubble text takes the editor theme color and a pale buddy gets a faint outline, so both read on a light theme', () => {
+    const view: View = {
+        t: 1000, cols: 40, species: 'ghost', rarity: 'common', mood: 'idle', moodAge: 0,
+        pose: { x: 24, isFacingLeft: false, isWalking: false, lookX: 0, lift: 0 },
+        bubble: { text: 'hi there', age: 3000 }, agents: 0, hatchAge: null, hearts: [], rows: 3, jump: null,
+        action: null, toy: null, spark: null, season: null, menu: null,
+        nap: null, trail: [], leave: null, food: null, isShiny: false, vibe: 'content', trophy: null, isEditor: true,
+    }
+    const editor = cellsSvgOf(paint(view), 40, 3, 8)
+    const terminal = cellsSvgOf(paint({ ...view, isEditor: false }), 40, 3, 8)
+
+    expect(editor).toContain('fill="currentColor">there</text>')
+    expect(terminal).not.toContain('fill="currentColor">there</text>')
+    expect(editor).toContain('<path class="pale" fill="')
+})
 
 test('a bubble said on waking up is drawn over the fading tree, its frame whole', () => {
     const view: View = {
@@ -1911,7 +1932,7 @@ test('in VS Code the buddy is drawn frame by frame from the terminal scene with 
     expect(first).toContain('</svg>')
     expect(again).toBe(first)
     expect([...seen].filter(picture => picture.includes('@keyframes s4'))).not.toHaveLength(0)
-    expect(new Set([...seen].map(picture => Math.min(...[...(JSON.parse(`"${picture}"`) as string).matchAll(/<rect x="(\d+)"[^>]*fill="#2b2d42"/g)].map(found => Number(found[1]))))).size).toBeGreaterThan(3)
+    expect(new Set([...seen].map(picture => Math.min(...spansOf(JSON.parse(`"${picture}"`) as string, '#2b2d42').map(span => span.x)))).size).toBeGreaterThan(3)
     expect(seen.size).toBeGreaterThan(40)
     expect(askedWhileAlive).toBeGreaterThan(20)
 })
@@ -1930,7 +1951,7 @@ test('in VS Code, while Claude works, the buddy walks to the right corner and th
         return <Text>others</Text>
     })
     storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: clock.now() }, affection: { value: 80, at: clock.now() } } })
-    const leftmostOf = (drawn: unknown) => Math.min(...[...JSON.stringify(drawn).matchAll(/<rect x=\\"(\d+)\\"[^>]*fill=\\"#2b2d42\\"/g)].map(found => Number(found[1])))
+    const leftmostOf = (drawn: unknown) => Math.min(...spansOf(JSON.stringify(drawn).replace(/\\"/g, '"'), '#2b2d42').map(span => span.x))
     const wait = async (ms: number) => {
         for (let spent = 0; spent < ms; spent += 100) {
             await clock.advance(100)
@@ -2015,8 +2036,8 @@ test('in VS Code a ball thrown while the buddy works in the right corner flies i
 
         return /<g class="s0">(.*?)<\/g><g class="s1">/.exec(svg)?.[1] ?? svg
     }
-    const leftmost = (shot: string, fill: string) => Math.min(...[...shot.matchAll(new RegExp(`<rect x="(\\d+)"[^>]*fill="${fill}"`, 'g'))].map(found => Number(found[1])))
-    const rightmost = (shot: string, fill: string) => Math.max(...[...shot.matchAll(new RegExp(`<rect x="(\\d+)" y="\\d+" width="(\\d+)"[^>]*fill="${fill}"`, 'g'))].map(found => Number(found[1]) + Number(found[2])))
+    const leftmost = (shot: string, fill: string) => Math.min(...spansOf(shot, fill).map(span => span.x))
+    const rightmost = (shot: string, fill: string) => Math.max(...spansOf(shot, fill).map(span => span.x + span.w))
     const wait = async (ms: number) => {
         for (let spent = 0; spent < ms; spent += 50) {
             await clock.advance(50)
@@ -2173,6 +2194,37 @@ test('a buddy that grew up while you were away says so and shows its new size in
     expect(props).toContain('"growth":"young"')
 })
 
+test('in VS Code the buddy greets you back in a bubble written in the editor theme color', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('prompt.submit', (_, e) => ({ text: (e as { text: string }).text }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, species: 'octopus', belly: { value: 80, at: clock.now() }, affection: { value: 80, at: clock.now() } } })
+    const wait = async (ms: number) => {
+        for (let spent = 0; spent < ms; spent += 500) {
+            await clock.advance(500)
+            await above.redraw()
+        }
+    }
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    await wait(4 * 60000)
+    await $.prompt.submit({ text: "I'm back" } as Parameters<typeof $.prompt.submit>[0])
+    await wait(2000)
+    const drawn = JSON.stringify(await above.drawn())
+    await above.unmount()
+
+    expect(drawn).toContain('fill=\\"currentColor\\"')
+})
+
 test('in VS Code the buddy stops sending new pictures once you have been away for a while and it sleeps, and wakes on your next press', async ($, on) => {
     const clock = mock.clock(on, { now: Date.now() })
     on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -2204,6 +2256,7 @@ test('in VS Code the buddy stops sending new pictures once you have been away fo
     const beforeQuiet = asked
     await wait(20000)
     const whileAway = asked - beforeQuiet
+    const awayPicture = JSON.stringify(await above.drawn())
     await above.press({ key: 'editor-heart' })
     const beforeBack = asked
     await wait(5000)
@@ -2211,6 +2264,8 @@ test('in VS Code the buddy stops sending new pictures once you have been away fo
     await above.unmount()
 
     expect(whileAway).toBeLessThanOrEqual(2)
+    expect(awayPicture).toContain('</svg>')
+    expect(awayPicture).not.toContain('animation')
     expect(afterBack).toBeGreaterThan(5)
 })
 
