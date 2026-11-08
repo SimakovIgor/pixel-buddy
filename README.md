@@ -2,10 +2,9 @@
 
 **Ship code, feed your buddy.**
 
-A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, levels up,
-earns rare trophies, does tricks and tells facts while Claude thinks, naps when you are away and plays with you on
-clicks. Every buddy
-you hatch stays in your nest, and nothing leaves your machine.
+A pixel pet for Claude Code. It hatches tiny in the footer next to your status line and grows up over three weeks,
+eats what your work drops, levels up, earns rare trophies, does tricks and tells facts while Claude thinks, naps when
+you are away and plays with you on clicks. Every buddy you hatch stays in your nest, and nothing leaves your machine.
 
 ![An answer from Claude drops a cookie, the ninja walks over and eats it. A commit drops a cake and brings level 3](pixel-buddy/docs/feed.gif)
 
@@ -42,9 +41,18 @@ Six are secret. Each one brings a gold cup and fireworks, and `share` copies a c
 
 ![A gold cup appears next to the buddy, fireworks go off on both sides in the trophy's rarity color, then its name shows up](pixel-buddy/docs/trophy.gif)
 
-Your trophy case opens from the menu, a pixel badge for each trophy:
+Your trophy case opens from the menu, a pixel badge for each trophy. All fourteen and how to earn them, the secret
+ones behind a spoiler, are in [TROPHIES.md](TROPHIES.md) ([по-русски](TROPHIES.ru.md)):
 
 ![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](pixel-buddy/docs/trophy-case.png)
+
+In VS Code and Cursor the buddy sits right above the prompt and lives the same life as in the terminal: it strolls,
+walks off to the right corner to think while Claude works, naps under its palm and walks over to eat what your work
+drops. The editor does not let a click land on a picture, so four small buttons sit next to it: ❤️ pets it, 🍪 hands
+it a berry, ⚾ throws a ball it runs after, `⋯` opens the same menu as a right click. `/buddy panel` puts it on the
+right:
+
+![In VS Code the octopus sits above the prompt: the ball button throws a ball and it catches it, the cookie button gets a polite no from a full belly, the heart button makes hearts](pixel-buddy/docs/vscode.gif)
 
 Eight species, and each one comes and goes in its own way:
 

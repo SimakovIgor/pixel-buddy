@@ -1,10 +1,10 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { cardOf, fullnessOf, hatch, levelOf, vibeOf } from './buddy'
+import { BABY_DAYS, GROWTH_SINCE, YOUNG_DAYS, cardOf, fullnessOf, growthOf, hatch, levelOf, vibeOf } from './buddy'
 import type { Buddy } from './buddy'
 import { isTestRun } from './register'
-import { BUBBLE_MS, paint } from './scene'
-import { SPECIES } from './species'
+import { BUBBLE_MS, DEFAULT, colorsOf as speciesColorsOf, paint } from './scene'
+import { SPECIES, SPRITE_W } from './species'
 import { commitTrophiesAt, nextTally } from './trophies'
 import { FACTS, FACT_PART_MAX, factOf, sayingMsOf } from './facts'
 import { setLanguage } from './i18n'
@@ -466,6 +466,44 @@ const rowOf = (view: View, row: number): string => {
 
     return Array.from({ length: view.cols }, (_, x) => String.fromCodePoint(cells[(row * view.cols + x) * 3] ?? 0x20)).join('')
 }
+
+test('a buddy hatched after growth came out is a baby for a week, young until three weeks, then grown up; older buddies stay grown up', () => {
+    const born = GROWTH_SINCE + 1000
+    const day = 24 * 3600000
+
+    expect([0, BABY_DAYS - 0.1, BABY_DAYS, YOUNG_DAYS - 0.1, YOUNG_DAYS].map(days => growthOf({ hatchedAt: born }, born + days * day))).toEqual(['baby', 'baby', 'young', 'young', 'adult'])
+    expect(growthOf({ hatchedAt: GROWTH_SINCE - 1000 }, GROWTH_SINCE)).toBe('adult')
+})
+
+test('a baby is drawn smaller than a young buddy, a young one smaller than a grown up, and the card says when it grows', () => {
+    const pixels = (growth: 'baby' | 'young' | 'adult') => {
+        const cells = paint(footerView({ species: 'cat', growth }))
+
+        return Array.from({ length: cells.length / 3 }, (_, at) => cells[at * 3 + 1]).filter(color => color !== DEFAULT).length
+    }
+    const born = GROWTH_SINCE + 1000
+    const card = cardOf({ ...NOODLE, species: 'cat', hatchedAt: born }, born + 2 * 24 * 3600000)
+
+    expect(pixels('baby')).toBeLessThan(pixels('young'))
+    expect(pixels('young')).toBeLessThan(pixels('adult'))
+    expect(card).toContain('a baby, grows up a bit in 5 d')
+})
+
+test('the octopus juggles around itself: the balls on the far half of the circle pass behind it and never cover its head', () => {
+    const headOf = (cells: Uint32Array) => Array.from({ length: SPRITE_W }, (_, dx) => (38 + dx) * 3).flatMap(at => {
+        const glyph = cells[at]
+        const fg = cells[at + 1]
+        const bg = cells[at + 2]
+
+        return glyph === 0x2584 ? [bg, fg] : glyph === 0x2588 ? [fg, fg] : glyph === 0x2580 ? [fg, bg] : [bg, bg]
+    })
+    const plain = headOf(paint(footerView({ species: 'octopus' })))
+    const frames = Array.from({ length: 26 }, (_, k) => paint(footerView({ species: 'octopus', action: { kind: 'trick', age: 200 + k * 90 } })))
+    const covered = frames.map(cells => headOf(cells).filter((color, at) => plain[at] !== DEFAULT && color !== plain[at]).length)
+
+    expect(covered).toEqual(Array.from({ length: 26 }, () => 0))
+    expect(frames.filter(cells => cells.some((value, at) => value !== paint(footerView({ species: 'octopus' }))[at]))).not.toHaveLength(0)
+})
 
 test('in the desktop app the bubble is plain text on a fill, the terminal keeps the frame', () => {
     const view = footerView({ cols: 64, species: 'ghost', pose: { x: 40, isFacingLeft: true, isWalking: false, lookX: 0, lift: 0 }, bubble: { text: 'boo~', age: 2000 } })
@@ -1231,6 +1269,22 @@ test('green tests soon after three failures in a row earn Comeback, a duck pette
     expect(trophiesIn(store)).toEqual(['comeback', 'rubber-duck'])
 })
 
+test('a ninja earns Ball Champ with ten shurikens caught within a minute', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const ui = await $.ui.mount(BAND)
+    for (let k = 0; k < 10; k++) {
+        await ui.post({ type: 'caught', kind: 'shuriken' }, { in: 'buddy-band' })
+    }
+    await ui.unmount()
+
+    expect(trophiesIn(store)).toEqual(['ball'])
+})
+
 test('ten balls caught within a minute earn Ball Champ, nine do not', async ($, on) => {
     stubEngine(on)
     const store: Record<string, unknown> = { buddy: { ...NOODLE, species: 'cat' } }
@@ -1777,6 +1831,485 @@ test('the menu keeps the basics, settings holds language, theme, facts and hide,
     expect(saved).toEqual([{ key: 'pixel-buddy.language', value: 'Русский' }])
     expect(menuKeysOf(russian)).toEqual(['card', 'nest', 'trophies', 'share', 'settings', 'close'])
     expect(russian).toContain('"label":"карточка"')
+})
+
+const PANE = (surface: 'vscode' | 'desktop') => ({
+    plugin: 'pixel-buddy',
+    surface,
+    component: 'Pane',
+    requestId: 'pixel-buddy',
+    props: { title: 'Pixel Buddy', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+} as const)
+
+test('in VS Code the buddy sits above the prompt next to ❤️ 🍪 ✦ ⋯, /buddy answers in one line and /buddy panel opens it on the right', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('session.attach', (_, e) => ({ clientId: (e as { clientId: string }).clientId }))
+    const opened: string[] = []
+    on('ui.open', (_$, e) => {
+        opened.push(e.id)
+
+        return { value: { isPlaced: true } }
+    })
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    await $.session.attach({ surface: 'vscode', clientId: 'vscode:default' })
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+    const panel = await $.command.run({ command: 'buddy', args: 'panel' } as Parameters<typeof $.command.run>[0])
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    const drawn = JSON.stringify(await above.drawn())
+    await above.unmount()
+
+    expect(JSON.stringify(card)).toContain('⋯')
+    expect(JSON.stringify(card)).not.toContain('DEBUGGING')
+    expect(opened).toEqual(['pixel-buddy'])
+    expect(panel.text).toBe('In VS Code and Cursor the buddy panel opens on the right')
+    expect(drawn).toContain('<svg')
+    expect(drawn).toContain('"❤️"')
+    expect(drawn).toContain('"🍪"')
+    expect(drawn).toContain('"✦"')
+    expect(drawn).toContain('"⋯"')
+    expect(drawn).not.toContain('"settings"')
+})
+
+test('in VS Code the buddy is drawn frame by frame from the terminal scene with 600 ms of frames ahead, redrawn as it breathes and walks, the same moment twice gives the same picture', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.UTC(2026, 4, 12, 7, 0, 0) })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    let asked = 0
+    on('ui.invalidate', () => {
+        asked += 1
+
+        return { value: undefined }
+    })
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: clock.now() }, affection: { value: 80, at: clock.now() } } })
+    const pictureOf = (drawn: unknown) => /"source":"((?:[^"\\]|\\.)*)"/.exec(JSON.stringify(drawn))?.[1] ?? ''
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const pane = await $.ui.mount(PANE('vscode'))
+    const first = pictureOf(await pane.drawn())
+    await pane.redraw()
+    const again = pictureOf(await pane.drawn())
+    const seen = new Set<string>([first])
+    const askedBefore = asked
+    for (let step = 0; step < 100; step++) {
+        await clock.advance(100)
+        await pane.redraw()
+        seen.add(pictureOf(await pane.drawn()))
+    }
+    const askedWhileAlive = asked - askedBefore
+    await pane.unmount()
+
+    expect(first).toContain('</svg>')
+    expect(again).toBe(first)
+    expect([...seen].filter(picture => picture.includes('@keyframes s4'))).not.toHaveLength(0)
+    expect(new Set([...seen].map(picture => Math.min(...[...(JSON.parse(`"${picture}"`) as string).matchAll(/<rect x="(\d+)"[^>]*fill="#2b2d42"/g)].map(found => Number(found[1]))))).size).toBeGreaterThan(3)
+    expect(seen.size).toBeGreaterThan(40)
+    expect(askedWhileAlive).toBeGreaterThan(20)
+})
+
+test('in VS Code, while Claude works, the buddy walks to the right corner and thinks there, as in the terminal', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.UTC(2026, 4, 12, 7, 0, 0) })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, belly: { value: 80, at: clock.now() }, affection: { value: 80, at: clock.now() } } })
+    const leftmostOf = (drawn: unknown) => Math.min(...[...JSON.stringify(drawn).matchAll(/<rect x=\\"(\d+)\\"[^>]*fill=\\"#2b2d42\\"/g)].map(found => Number(found[1])))
+    const wait = async (ms: number) => {
+        for (let spent = 0; spent < ms; spent += 100) {
+            await clock.advance(100)
+            await pane.redraw()
+        }
+    }
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const pane = await $.ui.mount(PANE('vscode'))
+    await wait(1000)
+    const resting = leftmostOf(await pane.drawn())
+    await $.turn.start({ text: 'go', turnId: 't1' } as Parameters<typeof $.turn.start>[0])
+    await wait(10000)
+    const working = leftmostOf(await pane.drawn())
+    await wait(3000)
+    const stillWorking = leftmostOf(await pane.drawn())
+    await pane.unmount()
+
+    expect(working).toBeGreaterThan(resting)
+    expect(stillWorking).toBe(working)
+})
+
+const SURFACE_PLAY = {
+    terminal: { mount: BAND, pet: { post: { type: 'pet' } }, ball: { post: { type: 'caught', kind: 'ball' } } },
+    desktop: { mount: { ...ABOVE, surface: 'desktop' }, pet: { post: { type: 'pet' } }, ball: { post: { type: 'caught', kind: 'ball' } } },
+    vscode: { mount: { ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } }, pet: { press: 'editor-heart' }, ball: { press: 'editor-ball' } },
+} as const
+
+for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
+    test(`on ${surface} petting and a caught ball give the same love as on every other surface`, async ($, on) => {
+        const clock = mock.clock(on, { now: Date.now() })
+        on('session.start', (_, e) => ({ cwd: e.cwd }))
+        on('env.get', () => ({ value: 'en_US.UTF-8' }))
+        on('command.register', () => ({ value: { command: 'buddy' } }))
+        on('agent.list', () => ({ value: [] }))
+        on('ui.invalidate', () => ({ value: undefined }))
+        on('ui.render', ($, e) => {
+            const { Text } = $.ui.resolve(e)
+
+            return <Text>others</Text>
+        })
+        const store: Record<string, unknown> = { buddy: { ...NOODLE, species: 'octopus', belly: { value: 80, at: clock.now() }, affection: { value: 40, at: clock.now() } } }
+        storeOn(on, store)
+        const play = SURFACE_PLAY[surface]
+        const act = async (ui: Awaited<ReturnType<typeof $.ui.mount>>, step: { post?: object; press?: string }) => {
+            await (step.post === undefined ? ui.press({ key: step.press ?? '' }) : ui.post(step.post as never, { in: 'buddy-band' }))
+            for (let spent = 0; spent < 3000; spent += 100) {
+                await clock.advance(100)
+                await ui.redraw()
+            }
+        }
+
+        await $.session.start({ cwd: '/', surface, isInteractive: true })
+        const ui = await $.ui.mount(play.mount as never)
+        await act(ui, play.pet)
+        const loved = petIn(store)?.affection?.value
+        await act(ui, play.ball)
+        await ui.unmount()
+
+        expect(loved).toBe(48)
+        expect(petIn(store)?.affection?.value).toBe(53)
+    })
+}
+
+test('in VS Code a ball thrown while the buddy works in the right corner flies in from the left and never over the buddy', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, species: 'octopus', belly: { value: 80, at: clock.now() }, affection: { value: 40, at: clock.now() } } })
+    const body = `#${((speciesColorsOf('octopus', false).b ?? 0) & 0xffffff).toString(16).padStart(6, '0')}`
+    const firstShotOf = (drawn: unknown) => {
+        const svg = JSON.parse(`"${/"source":"((?:[^"\\]|\\.)*)"/.exec(JSON.stringify(drawn))?.[1] ?? ''}"`) as string
+
+        return /<g class="s0">(.*?)<\/g><g class="s1">/.exec(svg)?.[1] ?? svg
+    }
+    const leftmost = (shot: string, fill: string) => Math.min(...[...shot.matchAll(new RegExp(`<rect x="(\\d+)"[^>]*fill="${fill}"`, 'g'))].map(found => Number(found[1])))
+    const rightmost = (shot: string, fill: string) => Math.max(...[...shot.matchAll(new RegExp(`<rect x="(\\d+)" y="\\d+" width="(\\d+)"[^>]*fill="${fill}"`, 'g'))].map(found => Number(found[1]) + Number(found[2])))
+    const wait = async (ms: number) => {
+        for (let spent = 0; spent < ms; spent += 50) {
+            await clock.advance(50)
+            await above.redraw()
+        }
+    }
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    await $.turn.start({ text: 'go', turnId: 't1' } as Parameters<typeof $.turn.start>[0])
+    await wait(7000)
+    await above.press({ key: 'editor-ball' })
+    const flight: string[] = []
+    for (let step = 0; step < 6; step++) {
+        await wait(50)
+        flight.push(firstShotOf(await above.drawn()))
+    }
+    await above.unmount()
+
+    expect(flight.filter(shot => shot.includes('fill="#ff5a3c"'))).not.toHaveLength(0)
+    expect(flight.filter(shot => shot.includes('fill="#ff5a3c"') && rightmost(shot, '#ff5a3c') > leftmost(shot, body))).toEqual([])
+})
+
+test('in VS Code a newborn buddy hatches and introduces itself the way it does in the terminal', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, {})
+    const altOf = (drawn: unknown) => /"alt":"([^"]*)"/.exec(JSON.stringify(drawn))?.[1] ?? ''
+
+    const started = $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    await clock.advance(200)
+    await started
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    const alts: string[] = []
+    for (let spent = 0; spent < 7000; spent += 350) {
+        await clock.advance(350)
+        await above.redraw()
+        alts.push(altOf(await above.drawn()))
+    }
+    await above.unmount()
+
+    expect(alts.filter(alt => alt.includes(': '))).not.toHaveLength(0)
+})
+
+test('in VS Code a hidden buddy leaves a button to bring it back, and the card takes the width of the chat', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE } })
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 100 } })
+    await above.press({ key: 'editor-menu' })
+    await above.redraw()
+    await above.press({ key: 'editor-card' })
+    await above.redraw()
+    const card = JSON.stringify(await above.find({ key: 'buddy-card' }))
+    await $.command.run({ command: 'buddy', args: 'off' } as Parameters<typeof $.command.run>[0])
+    await clock.advance(10000)
+    await above.redraw()
+    const hidden = JSON.stringify(await above.drawn())
+    await above.press({ key: 'editor-unhide' })
+    await above.redraw()
+    const back = JSON.stringify(await above.drawn())
+    await above.unmount()
+
+    expect(card).toContain('"width":72')
+    expect(hidden).toContain('editor-unhide')
+    expect(hidden).not.toContain('<svg')
+    expect(back).toContain('<svg')
+})
+
+test('in VS Code the pane and the row above the prompt draw the same strip, whatever their widths', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('ui.invalidate', () => ({ value: undefined }))
+    const widthOf = (drawn: unknown) => /"type":"Svg","props":\{"source":"(?:[^"\\]|\\.)*","alt":"[^"]*","width":(\d+)/.exec(JSON.stringify(drawn))?.[1]
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const pane = await $.ui.mount({ ...PANE('vscode'), props: { ...PANE('vscode').props, bodyColumns: 30 } })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    const widths = [widthOf(await pane.drawn()), widthOf(await above.drawn())]
+    await pane.unmount()
+    await above.unmount()
+
+    expect(widths).toEqual(['320', '320'])
+})
+
+test('/buddy in a terminal shows the card even after a VS Code window was attached to the same session', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE } })
+    on('session.attach', (_, e) => ({ clientId: (e as { clientId: string }).clientId }))
+    on('session.surfaces', () => ({ value: ['terminal', 'vscode'] }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    await $.session.attach({ surface: 'vscode', clientId: 'vscode:default' })
+    const card = await $.command.run({ command: 'buddy', args: '' } as Parameters<typeof $.command.run>[0])
+    const panel = await $.command.run({ command: 'buddy', args: 'panel' } as Parameters<typeof $.command.run>[0])
+
+    expect(JSON.stringify(card)).toContain('DEBUGGING')
+    expect(panel.text).toContain('VS Code and Cursor')
+    expect(panel.text).not.toBe('In VS Code and Cursor the buddy panel opens on the right')
+})
+
+test('a buddy that grew up while you were away says so and shows its new size in the terminal and in VS Code alike', async ($, on) => {
+    const now = GROWTH_SINCE + 30 * 24 * 3600000
+    const clock = mock.clock(on, { now })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, species: 'octopus', hatchedAt: now - 8 * 24 * 3600000, growth: 'baby', belly: { value: 80, at: now }, affection: { value: 80, at: now } } }
+    storeOn(on, store)
+    const altOf = (drawn: unknown) => /"alt":"([^"]*)"/.exec(JSON.stringify(drawn))?.[1] ?? ''
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    const alts: string[] = []
+    for (let spent = 0; spent < 1000; spent += 200) {
+        await clock.advance(200)
+        await above.redraw()
+        alts.push(altOf(await above.drawn()))
+    }
+    await above.unmount()
+    const band = await $.ui.mount(BAND)
+    const props = JSON.stringify(await band.find({ type: 'Client', key: 'buddy-band' }))
+    await band.unmount()
+
+    expect(alts.filter(alt => alt.includes('look, I grew up a bit!'))).not.toHaveLength(0)
+    expect(petIn(store)).toMatchObject({ growth: 'young' })
+    expect(props).toContain('"growth":"young"')
+})
+
+test('in VS Code the ball button throws a ball, the buddy runs after it and catches it, the way a click does in the terminal', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, species: 'octopus', belly: { value: 80, at: clock.now() }, affection: { value: 40, at: clock.now() } } })
+    const altOf = (drawn: unknown) => /"alt":"([^"]*)"/.exec(JSON.stringify(drawn))?.[1] ?? ''
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    const resting = JSON.stringify(await above.drawn())
+    await above.press({ key: 'editor-ball' })
+    await clock.advance(100)
+    await above.redraw()
+    const thrown = JSON.stringify(await above.drawn())
+    for (let spent = 0; spent < 3000; spent += 100) {
+        await clock.advance(100)
+        await above.redraw()
+    }
+    const after = await above.drawn()
+    await above.unmount()
+
+    expect(resting).toContain('"⚾"')
+    expect(thrown).not.toBe(resting)
+    expect(altOf(after)).toContain('got it!')
+})
+
+test('in the editor 🍪 drops a berry by the buddy, it eats it and its belly fills', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, belly: { value: 40, at: clock.now() }, affection: { value: 40, at: clock.now() } } }
+    storeOn(on, store)
+    const pictureOf = (drawn: unknown) => /"source":"((?:[^"\\]|\\.)*)"/.exec(JSON.stringify(drawn))?.[1] ?? ''
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const pane = await $.ui.mount(PANE('vscode'))
+    await clock.advance(100)
+    await pane.redraw()
+    const before = pictureOf(await pane.drawn())
+    await pane.press({ key: 'editor-snack' })
+    await clock.advance(100)
+    await pane.redraw()
+    const dropped = pictureOf(await pane.drawn())
+    for (let step = 0; step < 40; step++) {
+        await clock.advance(100)
+        await pane.redraw()
+    }
+    await pane.unmount()
+
+    expect(dropped).not.toBe(before)
+    expect(Object.entries(store).filter(([key]) => key.startsWith('pet:')).map(([, saved]) => (saved as { belly: { value: number } }).belly.value)).toEqual([expect.any(Number)])
+    expect(Object.entries(store).filter(([key]) => key.startsWith('pet:')).map(([, saved]) => (saved as { belly: { value: number } }).belly.value)[0]).toBeGreaterThan(40)
+    expect(Object.entries(store).filter(([key]) => key.startsWith('pet:')).map(([, saved]) => (saved as { affection: { value: number } }).affection.value)[0]).toBe(46)
+})
+
+test('in the pane a press pets the buddy, the card button shows its card with a link to the repository, and a terminal never gets the pane', async ($, on) => {
+    stubEngine(on)
+    const store: Record<string, unknown> = { buddy: { ...NOODLE } }
+    storeOn(on, store)
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+    const pane = await $.ui.mount(PANE('desktop'))
+    const resting = JSON.stringify(await pane.drawn())
+    await pane.press({ key: 'editor-heart' })
+    await pane.redraw()
+    const petted = JSON.stringify(await pane.drawn())
+    await pane.press({ key: 'editor-menu' })
+    await pane.redraw()
+    const menu = JSON.stringify(await pane.drawn())
+    await pane.press({ key: 'editor-card' })
+    await pane.redraw()
+    const card = JSON.stringify(await pane.drawn())
+    await pane.unmount()
+    const terminal = await $.ui.mount(PANE('terminal' as 'desktop'))
+    const nothing = JSON.stringify(await terminal.drawn())
+    await terminal.unmount()
+
+    expect(resting).toContain('"❤️"')
+    expect(resting).toContain('"🍪"')
+    expect(menu).toContain('"Noodle · lv 1 ')
+    expect(menu).toContain('"card"')
+    expect(menu).toContain('"settings"')
+    expect(petted).toContain('hai!')
+    expect(petted).toContain('♥')
+    expect(card).toContain('"buddy-card"')
+    expect(card).toContain('a ⭐ on github.com/SimakovIgor/pixel-buddy helps others find it')
+    expect(nothing).not.toContain('buddy-stage')
+})
+
+test('in VS Code an answer drops a cookie above the prompt and the buddy eats it', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    const store: Record<string, unknown> = { buddy: { ...NOODLE, xp: 0, belly: { value: 40, at: clock.now() }, affection: { value: 60, at: clock.now() } } }
+    storeOn(on, store)
+    on('turn.start', (_, e) => ({ turnId: (e as { turnId: string }).turnId }))
+    on('turn.complete', () => ({ text: '' }))
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    await $.turn.start({ text: 'go', turnId: 't1' } as Parameters<typeof $.turn.start>[0])
+    await $.turn.complete({ turnId: 't1', reason: 'answer', answer: 'done', text: 'done' } as unknown as Parameters<typeof $.turn.complete>[0])
+    await above.redraw()
+    const falling = JSON.stringify(await above.drawn())
+    for (let spent = 0; spent < 6000; spent += 100) {
+        await clock.advance(100)
+        await above.redraw()
+    }
+    await above.unmount()
+
+    expect(falling).toContain('<svg')
+    expect(petIn(store)).toMatchObject({ xp: 1 })
 })
 
 test('a buddy set to Русский speaks Russian: the card, the menu, a fact and the help', { options: { language: 'Русский' } }, async ($, on) => {

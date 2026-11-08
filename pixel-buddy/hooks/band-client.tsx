@@ -1,10 +1,10 @@
 import type { ClientElements, ClientModule, ClientPointerEvent, JsonValue } from 'claude-code'
 
 import type { Rarity, SnackKind, Vibe } from './buddy'
-import { DEFAULT, NAP_FADE_MS, ROWS, TRAIL_MS, maxXOf, menuLayoutOf, menuRowsOf, paint } from './scene'
+import { BALL_GROUND, CATCH_AFTER_MS, CHASE_CELLS_PER_MS, DEFAULT, EAT_SHOW_MS, FOOD_FALL_MS, HAND_Y, NAP_FADE_MS, ROWS, SHURIKEN_MS, TRAIL_MS, WANDER_JITTER_MS, WANDER_PAUSE_MS, ballYOf, foodXOf, foodYOf, handXOf, maxXOf, menuLayoutOf, menuRowsOf, paint, walkPaceOf } from './scene'
 import type { ActionKind, Menu, Mood, Pose, Season, View } from './scene'
 import { SPRITE_W } from './species'
-import type { SpeciesId } from './species'
+import type { Growth, SpeciesId } from './species'
 
 export type BandProps = {
     cols: number
@@ -27,6 +27,7 @@ export type BandProps = {
     snack: { kind: SnackKind; at: number } | null
     isShiny: boolean
     vibe: Vibe
+    growth: Growth
     trophy: { rarity: Rarity; at: number } | null
     isDesktop?: boolean
 }
@@ -61,8 +62,6 @@ type BandState = {
 
 const FRAME_MS = 50
 const ALIVE_MS = 5000
-const WALK_SPEED = 0.007
-const CHASE_SPEED = 0.016
 const FACE_DEADZONE = 3
 const TYPING_MS = 1500
 const DOUBLE_CLICK_MS = 350
@@ -119,14 +118,9 @@ const jumpOf = (s: BandState, p: BandProps): BandState['jump'] => {
     return { at: p.jumpAt, fromX, toX: clampX(fromX > p.cols / 2 ? fromX - span : fromX + span, p) }
 }
 
-const BALL_GROUND = 4
-const SHURIKEN_MS = 450
 const TOY_GIVE_UP_MS = 6000
-const CATCH_AFTER_MS = 300
 
-const ballYOf = (age: number): number => BALL_GROUND - Math.round(5 * Math.exp(-age / 420) * Math.abs(Math.cos(age / 120)))
-
-const handOf = (s: BandState): { x: number; y: number } => ({ x: s.isFacingLeft ? Math.round(s.x) + 1 : Math.round(s.x) + SPRITE_W - 2, y: 3 })
+const handOf = (s: BandState): { x: number; y: number } => ({ x: handXOf(s.x, s.isFacingLeft), y: HAND_Y })
 
 const toyAt = (s: BandState, now: number): { x: number; y: number } | null => {
     if (s.toy === null) {
@@ -162,13 +156,10 @@ const catchToy = (s: BandState, p: BandProps, now: number, post: (data: JsonValu
     return { ...s, toy: null, spark: { at: now, x: at.x, y: at.y } }
 }
 
-const FOOD_FALL_MS = 450
-const EAT_MS = 500
-const FOOD_GROUND = 4
 
 const foodOf = (s: BandState, p: BandProps, now: number): Food | null => {
     if (s.food !== null && s.food.eatenAt !== null) {
-        return now - s.food.eatenAt > EAT_MS ? null : s.food
+        return now - s.food.eatenAt > EAT_SHOW_MS ? null : s.food
     }
     if (p.snack === null || p.snack.at === s.lastEatenAt) {
         return null
@@ -176,9 +167,7 @@ const foodOf = (s: BandState, p: BandProps, now: number): Food | null => {
     if (s.food !== null && s.food.at === p.snack.at) {
         return s.food
     }
-    const center = s.x + SPRITE_W / 2
-    const way = center > p.cols / 2 ? -1 : 1
-    const x = Math.round(Math.max(1, Math.min(p.cols - 3, center + way * (8 + Math.random() * 8))))
+    const x = foodXOf(s.x, p.cols, Math.random())
 
     return { kind: p.snack.kind, at: p.snack.at, x, landAt: now + FOOD_FALL_MS, eatenAt: null, isHanded: false }
 }
@@ -227,7 +216,7 @@ const targetOf = (s: BandState, p: BandProps, now: number, x: number): { target:
         return { target: x, nextWanderAt: s.nextWanderAt }
     }
     if (now > s.nextWanderAt && Math.abs(s.target - x) < 0.5 && !isTyping) {
-        return { target: Math.round(Math.random() * homeOf(p)), nextWanderAt: now + 7000 + Math.random() * 9000 }
+        return { target: Math.round(Math.random() * homeOf(p)), nextWanderAt: now + WANDER_PAUSE_MS + Math.random() * WANDER_JITTER_MS }
     }
 
     return { target: clampX(s.target, p), nextWanderAt: s.nextWanderAt }
@@ -262,7 +251,7 @@ const step = (s: BandState, p: BandProps, now: number): BandState => {
         : { glanceX: s.glanceX, glanceUntil: s.glanceUntil, nextGlanceAt: s.nextGlanceAt, hopUntil: s.hopUntil }
 
     const isHurrying = food !== null && food.isHanded && food.eatenAt === null
-    const speed = isChasing(s, p) || s.toy !== null || isHurrying ? CHASE_SPEED : WALK_SPEED * (p.vibe === 'tired' ? 0.55 : p.vibe === 'hungry' ? 0.8 : 1)
+    const speed = isChasing(s, p) || s.toy !== null || isHurrying ? CHASE_CELLS_PER_MS : walkPaceOf(p.vibe)
     const isGoingToFood = food !== null && food.eatenAt === null && now >= food.landAt
     const watched = s.toy !== null ? s.toy.x : isGoingToFood ? food.x : s.pointer === null || s.drag !== null ? null : s.pointer.x
     const offset = watched === null ? 0 : watched - (x + SPRITE_W / 2)
@@ -392,10 +381,11 @@ const viewOf = (s: BandState, p: BandProps, now: number): View => ({
     food: s.food === null ? null : {
         kind: s.food.kind,
         x: s.food.x,
-        y: now >= s.food.landAt ? FOOD_GROUND : Math.round(FOOD_GROUND - ((s.food.landAt - now) / FOOD_FALL_MS) * 6),
+        y: foodYOf(s.food.landAt, now),
         eatenAge: s.food.eatenAt === null ? null : now - s.food.eatenAt,
     },
     isShiny: p.isShiny,
+    growth: p.growth,
     vibe: p.vibe,
     trophy: p.trophy === null ? null : { rarity: p.trophy.rarity, age: now - p.trophy.at },
     isDesktop: p.isDesktop,

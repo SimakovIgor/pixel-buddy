@@ -29,7 +29,10 @@ Sessions opened before the install get it after `/reload-plugins`.
 
 ## Requirements
 
-- Claude Code 2.1.318 or later, in the terminal or in the Code tab of the desktop app
+- Claude Code 2.1.318 or later, in the terminal, the Code tab of the desktop app, or the Claude Code extension for
+  VS Code and Cursor. In the editor the buddy sits right above the prompt and behaves as in the terminal; clicks go
+  through ❤️ 🍪 ⚾ `⋯` next to it, since the editor does not let a click land on a picture. `/buddy panel` opens it
+  on the right
 - a terminal with 24-bit color. Clicks need a terminal that reports the mouse: iTerm2, Ghostty, kitty, WezTerm, Warp
 - 130 columns or more to sit in the footer. A narrower terminal shows the buddy above the prompt
 

@@ -280,3 +280,80 @@ export const speciesOf = (id: string): Species => {
 }
 
 export const byGender = (id: string, masculine: string, feminine: string): string => (RU[speciesOf(id).id].isFem ? feminine : masculine)
+
+export type Growth = 'baby' | 'young' | 'adult'
+
+const LITTLE: Record<SpeciesId, Record<'baby' | 'young', readonly (readonly string[])[]>> = {
+    cat: {
+        baby: [['b.....b', 'bc...cb', 'bbbbbbb', 'bebbbeb', 'cbbmbbc'], ['b.....b', 'bc...cb', 'bbbbbbb', 'bebbbeb', 'cbbmbbc']],
+        young: [['b......b', 'bb....bb', 'bebbbbeb', 'bcbmmbcb', '.ssssss.'], ['b......b', 'bb....bb', 'bebbbbeb', 'bcbmmbcb', '.s.ss.s.']],
+    },
+    duck: {
+        baby: [['.bbbb.', 'bebbeb', 'cboobc', '.o..o.'], ['.bbbb.', 'bebbeb', 'cboobc', 'o....o']],
+        young: [['..bbbb..', '.bebbeb.', '.cboobc.', '.sbbbbs.', '..o..o..'], ['..bbbb..', '.bebbeb.', '.cboobc.', '.sbbbbs.', '.o....o.']],
+    },
+    ghost: {
+        baby: [['.bbbb.', 'bebbeb', 'bbmmbb', 's.ss.s'], ['.bbbb.', 'bebbeb', 'bbmmbb', '.s..s.']],
+        young: [['..bbbb..', '.bebbeb.', '.cbmmbc.', '.bbbbbb.', '.s.ss.s.'], ['..bbbb..', '.bebbeb.', '.cbmmbc.', '.bbbbbb.', 's.s..s.s']],
+    },
+    octopus: {
+        baby: [['.bbbb.', 'bebbeb', 'cbbbbc', 's.ss.s'], ['.bbbb.', 'bebbeb', 'cbbbbc', '.s..s.']],
+        young: [['..bbbb..', '.bbbbbb.', '.bebbeb.', '.cbbbbc.', 's.s..s.s'], ['..bbbb..', '.bbbbbb.', '.bebbeb.', '.cbbbbc.', '.s.ss.s.']],
+    },
+    axolotl: {
+        baby: [['obbbbo', 'bebbeb', '.bmmb.', '.s..s.'], ['obbbbo', 'bebbeb', '.bmmb.', 's....s']],
+        young: [['o.bbbb.o', '.bbbbbb.', '.bebbeb.', '.cbmmbc.', '..s..s..'], ['o.bbbb.o', '.bbbbbb.', '.bebbeb.', '.cbmmbc.', '.s....s.']],
+    },
+    robot: {
+        baby: [['..o...', 'bbbbbb', 'bebbeb', '.s..s.'], ['...o..', 'bbbbbb', 'bebbeb', 's....s']],
+        young: [['...o....', '.bbbbbb.', '.bebbeb.', '.bmmmmb.', '..s..s..'], ['....o...', '.bbbbbb.', '.bebbeb.', '.bmmmmb.', '.s....s.']],
+    },
+    ninja: {
+        baby: [['.bbbb.', 'rrrrrr', 'bseseb', '.b..b.'], ['.bbbb.', 'rrrrrr', 'bseseb', 'b....b']],
+        young: [['.bbbbbb.', 'rrrrrrrr', '.bseseb.', '.bbbbbb.', '.b....b.'], ['.bbbbbb.', 'rrrrrrrr', '.bseseb.', '.bbbbbb.', 'b......b']],
+    },
+    penguin: {
+        baby: [['.bbbb.', 'bewweb', 'bwoowb', '.o..o.'], ['.bbbb.', 'bewweb', 'bwoowb', 'o....o']],
+        young: [['..bbbb..', '.bbbbbb.', 'bwewwewb', 'bwcoocwb', '.oo..oo.'], ['..bbbb..', '.bbbbbb.', 'bwewwewb', 'bwcoocwb', 'oo....oo']],
+    },
+}
+
+const boxOf = (rows: readonly string[], height: number): readonly string[] => {
+    const side = Math.floor((SPRITE_W - (rows[0]?.length ?? 0)) / 2)
+    const wide = rows.map(line => `${'.'.repeat(side)}${line}`.padEnd(SPRITE_W, '.'))
+
+    return [...Array.from({ length: Math.max(0, height - wide.length) }, () => '.'.repeat(SPRITE_W)), ...wide]
+}
+
+const boxed = new Map<string, readonly (readonly string[])[]>()
+
+const boxedOf = (key: string, make: () => readonly (readonly string[])[]): readonly (readonly string[])[] => {
+    const known = boxed.get(key) ?? make()
+    boxed.set(key, known)
+
+    return known
+}
+
+export const miniOf = (id: string, frame: number): readonly string[] => {
+    const baby = LITTLE[speciesOf(id).id].baby
+
+    return baby[frame % baby.length] ?? []
+}
+
+export const framesOf = (id: string, growth: Growth = 'adult'): readonly (readonly string[])[] => {
+    const species = speciesOf(id)
+    if (growth === 'adult') {
+        return species.frames
+    }
+
+    return boxedOf(`${species.id}:${growth}`, () => LITTLE[species.id][growth].map(rows => boxOf(rows, SPRITE_H)))
+}
+
+export const napOf = (id: string, growth: Growth = 'adult'): readonly string[] => {
+    const species = speciesOf(id)
+    if (growth !== 'baby') {
+        return species.nap
+    }
+
+    return boxedOf(`${species.id}:nap`, () => [boxOf(LITTLE[species.id].baby[0] ?? [], NAP_H)])[0] ?? species.nap
+}

@@ -2,23 +2,25 @@ import type { EngineInterface, Register, RenderElement, ResolveInput, Timer } fr
 
 import type { BandProps } from './band-client'
 
-import { FULL, REPO, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, rarityWordOf, vibeLabelOf, vibeOf } from './buddy'
+import { FULL, REPO, SNACKS, VIBE_MARKS, affectionOf, bar, cardOf, fullnessOf, growthLineOf, growthOf, hatch, headerOf, introOf, levelOf, meter, peakOf, rarityOf, rarityWordOf, vibeLabelOf, vibeOf } from './buddy'
 import type { Buddy, Mood as Feeling, SnackKind } from './buddy'
 import { FACTS, factOf, sayingMsOf } from './facts'
 import { isRu, plural, setLanguage, t } from './i18n'
 import type { Fact } from './facts'
 import { lineFor } from './lines'
 import type { Moment } from './lines'
-import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, encode, portraitOf } from './scene'
-import type { ActionKind, Menu, MenuItem, Mood, Season } from './scene'
-import { SPECIES, byGender, speciesOf } from './species'
+import { BUBBLE_MS, HEART_MS, LEAVE_MS, TROPHY_MS, arriveMsOf, JUMP_MS, MIN_COLS, FRUIT_MS, SLICE_MS, SWING_MS, TRICK_MS, WIDTH, rowsOf, PORTRAIT_COLS, PORTRAIT_ROWS, ROWS, CATCH_AFTER_MS, CHASE_CELLS_PER_MS, EAT_SHOW_MS, FOOD_FALL_MS, HAND_Y, SHURIKEN_MS, WANDER_JITTER_MS, WANDER_PAUSE_MS, ballYOf, encode, foodXOf, foodYOf, handXOf, maxXOf, paint, portraitOf, sameCells, walkPaceOf } from './scene'
+import type { ActionKind, FoodView, Menu, MenuItem, Mood, Pose, Season, View } from './scene'
+import { SPECIES, SPRITE_W, byGender, speciesOf } from './species'
 import type { SpeciesId } from './species'
 import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, emojisOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, textOf, toastOf, trophyOf } from './trophies'
 import type { Found, TrophyId } from './trophies'
 import { shareOf } from './share'
 import { trophyCaseOf } from './badges'
+import { cellsSvgOf, filmSvgOf } from './vscode'
 
 const CLIENT_KEY = 'buddy-band'
+const PANE_ID = 'pixel-buddy'
 const PET_PREFIX = 'pet:'
 const SEATS_KEY = 'seats'
 const SEATS_KEPT = 50
@@ -111,6 +113,18 @@ let frames = 0
 let clientKey = CLIENT_KEY
 let clientRestarts = 0
 let clientHeardFrame: number | null = null
+let stageDrawnAt = 0
+let lastStageKey = ''
+let editorShot: { cols: number; cells: Uint32Array; film: readonly Uint32Array[]; svg: string } | null = null
+let editorTimer: Timer | null = null
+let wanderPlan: Plan | null = null
+let anchorX = 4
+let anchorFacingLeft = false
+let isEditorAttached = false
+const aboveSurfaces = new Set<string>()
+let editorToy: { kind: 'ball' | 'shuriken'; at: number; fromX: number; x: number; y: number; targetX: number; catchAt: number } | null = null
+let editorSpark: { at: number; x: number; y: number } | null = null
+let filmCache: { key: string; frames: Map<number, Uint32Array> } = { key: '', frames: new Map() }
 let cols = WIDTH
 let jumpAt: number | null = null
 let messages = 0
@@ -121,7 +135,8 @@ let sessionId = ''
 let seats: Record<string, number> = {}
 let mainId: number | null = null
 let arrivalLine: string | null = null
-let snacks: Array<{ kind: SnackKind; at: number }> = []
+let snacks: Array<{ kind: SnackKind; at: number; isHanded?: boolean }> = []
+let editorFood: { kind: SnackKind; at: number; x: number; landAt: number; isHanded: boolean; eatenAt: number | null } | null = null
 let hungryNagAt = 0
 let tiredNagAt = 0
 let lonelyNagAt = 0
@@ -155,15 +170,16 @@ const ALIASES: Record<string, string> = {
 const speciesFor = (word: string | undefined) => (word === undefined ? undefined : SPECIES.find(one => one.id === word.toLowerCase()))
 
 const menuOf = (): Menu | null => {
-    if (menuPage === null || buddy === null) {
+    const page = menuPage
+    if (page === null || buddy === null) {
         return null
     }
-    if (menuPage === 'species') {
+    if (page === 'species') {
         const items: MenuItem[] = SPECIES.map(one => ({ key: `hatch:${one.id}`, label: ownedOf(one.id) === undefined ? speciesOf(one.id).name : `${speciesOf(one.id).name} ✓`, isOn: false }))
 
         return { items: [...items, { key: 'hatch:random', label: t('random', 'случайный'), isOn: false }, { key: 'back', label: '←', isOn: false }], header: t('pick a new species, ✓ calls yours back', 'выбери вид, ✓ вернет твоего') }
     }
-    if (menuPage === 'nest') {
+    if (page === 'nest') {
         const items: MenuItem[] = [buddy, ...nest].map(one => ({
             key: one === buddy ? 'close' : `pick:${one.hatchedAt}`,
             label: `${one.name} ${speciesOf(one.species).name} ${t('lv', 'ур')}${levelOf(one.xp ?? 0).level}${one.isShiny === true ? ' ✦' : ''}`,
@@ -179,7 +195,7 @@ const menuOf = (): Menu | null => {
             ),
         }
     }
-    if (menuPage === 'settings') {
+    if (page === 'settings') {
         return {
             items: [
                 { key: 'language', label: t('Русский', 'English'), isOn: false },
@@ -555,8 +571,10 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
     const belly = Math.round(fullnessOf(buddy, now))
     const love = Math.round(affectionOf(buddy, now))
     const stars = `${'★'.repeat(rarity.stars)}${'☆'.repeat(5 - rarity.stars)}`
-    const portrait = encode(portraitOf(buddy.species, buddy.rarity, buddy.isShiny === true, seasonOf(now), now))
-    const picture = e.surface === 'terminal' ? $.ui.resolve(e).Raster({ key: 'card-portrait', columns: PORTRAIT_COLS, rows: PORTRAIT_ROWS, cells: portrait }) : null
+    const portrait = portraitOf(buddy.species, buddy.rarity, buddy.isShiny === true, seasonOf(now), now, growthOf(buddy, now))
+    const picture = e.surface === 'terminal'
+        ? $.ui.resolve(e).Raster({ key: 'card-portrait', columns: PORTRAIT_COLS, rows: PORTRAIT_ROWS, cells: encode(portrait) })
+        : e.surface === 'vscode' ? $.ui.resolve(e).Svg({ source: cellsSvgOf(portrait, PORTRAIT_COLS, PORTRAIT_ROWS, 5), alt: buddy.name, width: PORTRAIT_COLS * 5, height: PORTRAIT_ROWS * 10 }) : null
 
     return (
         <Box key="buddy-card" flexDirection="column" borderStyle="round" borderColor={color} paddingX={1} width={Math.min(width, 72)}>
@@ -565,6 +583,7 @@ const drawCard = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
                 <Box flexDirection="column">
                     <Text color={color} weight="bold">{buddy.name}{buddy.isShiny === true ? ' ✦' : ''}</Text>
                     <Text>{species.name} · {stars} {rarityWordOf(buddy.rarity, buddy.species)}</Text>
+                    {growthLineOf(buddy, now) === '' ? null : <Text dimColor>{growthLineOf(buddy, now)}</Text>}
                     <Text>{VIBE_MARKS[feeling.vibe]} {vibeLabelOf(feeling.vibe)}: {feeling.why}</Text>
                     <Box flexDirection="row">
                         <Text>{t('level', 'уровень')} {level} </Text>
@@ -625,14 +644,16 @@ const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
     }
     const { Box, Text } = $.ui.resolve(e)
     const room = Math.min(width, 92)
-    const shown = e.surface === 'terminal' ? trophyCaseOf(found, room - 4) : null
+    const shown = e.surface === 'terminal' || e.surface === 'vscode' ? trophyCaseOf(found, room - 4) : null
     const latest = TROPHIES.filter(one => found[one.id] !== undefined).sort((a, b) => (found[b.id] ?? 0) - (found[a.id] ?? 0))[0]
     const badges = e.surface === 'terminal' && shown !== null
         ? $.ui.resolve(e).Raster({ key: 'trophy-badges', columns: shown.columns, rows: shown.rows, cells: encode(shown.cells) })
-        : badgeTextOf($, e, room)
+        : e.surface === 'vscode' && shown !== null
+            ? $.ui.resolve(e).Svg({ source: cellsSvgOf(shown.cells, shown.columns, shown.rows, 5), alt: t(`${countOf(found)} of ${TROPHIES.length} trophies`, `${countOf(found)} из ${TROPHIES.length} трофеев`), width: shown.columns * 5, height: shown.rows * 10 })
+            : badgeTextOf($, e, room)
 
     return (
-        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown === null ? room : shown.columns + 4}>
+        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown === null || e.surface === 'vscode' ? room : shown.columns + 4}>
             <Box flexDirection="row">
                 <Text color={hexOf(CASE_GOLD)} weight="bold">{t('trophies ', 'трофеи ')}</Text>
                 <Text>{t(`${countOf(found)} of ${TROPHIES.length}`, `${countOf(found)} из ${TROPHIES.length}`)}</Text>
@@ -646,14 +667,581 @@ const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
     )
 }
 
-const dropSnack = (kind: SnackKind, now: number): void => {
+const EDITOR_PX = 8
+const EDITOR_COLS = 40
+const CARD_COLS = 72
+const EDITOR_X = 4
+const TYPING_LOOK_MS = 1500
+const MENU_TEXT_COLOR = '#d6d3e0'
+const MENU_ON_COLOR = '#ffd23b'
+const MENU_EDGE_COLOR = '#6c6880'
+const MENU_HEADER_COLOR = '#9a96ad'
+
+const editorViewOf = (now: number, offset: number, cols: number, x0: number, pose: Partial<Pose>): View => {
+    const current = buddy as Buddy
+    const t = now + offset
+    const shown = demoAt === null ? currentMood(now) : mood
+    const typed = bubble === null ? 0 : [...bubble.text].length * 32 + 200
+
+    return {
+        t,
+        cols,
+        species: current.species,
+        rarity: current.rarity,
+        mood: shown,
+        moodAge: t - moodAt,
+        pose: { x: x0, isFacingLeft: false, isWalking: false, lookX: 0, lift: 0, ...pose },
+        bubble: bubble === null ? null : { text: bubble.text, age: Math.min(BUBBLE_MS - 800, Math.max(now - bubble.at, typed)) },
+        agents: demoAgents ?? agents,
+        hatchAge: hatchAt === null ? null : t - hatchAt,
+        leave: leave === null ? null : { species: leave.species, age: t - leave.at },
+        hearts: hearts.map(at => t - at),
+        rows: ROWS,
+        jump: null,
+        action: action === null ? null : { kind: action.kind, age: t - action.at },
+        toy: toyViewOf(t, x0, pose.isFacingLeft === true),
+        spark: sparkViewOf(t),
+        food: foodViewAt(t),
+        isShiny: current.isShiny === true,
+        growth: growthOf(current, now),
+        vibe: feelingOf(now).vibe,
+        trophy: trophyShow === null ? null : { rarity: trophyOf(trophyShow.id).rarity, age: t - trophyShow.at },
+        isDesktop: false,
+        season: seasonOf(now),
+        menu: null,
+        nap: shown === 'sleep' ? { x: x0, age: Math.max(0, now - lastSeenAt - SLEEP_AFTER_MS) + offset + 2000, wokeAge: null } : null,
+        trail: [],
+    }
+}
+
+const oneShotOf = (now: number): number => {
+    const ends = [
+        hatchAt === null || buddy === null ? 0 : hatchAt + arriveMsOf(buddy.species),
+        leave === null ? 0 : leave.at + LEAVE_MS,
+    ]
+
+    return Math.max(0, ...ends.map(end => end - now))
+}
+
+type Leg = { from: number; to: number; ms: number }
+
+type Plan = { kind: 'wander' | 'work' | 'chase' | 'eat'; startAt: number; maxX: number; legs: Leg[]; total: number; isFacingLeft: boolean }
+
+const BALL_FAR = 6
+const SPARK_KEEP_MS = 1500
+const BALL_FLY_MS = 350
+const EDITOR_FRESH_MS = 30000
+const EDITOR_AHEAD_FRAMES = 12
+const EDITOR_STEP_MS = 50
+const EDITOR_TICK_MS = 100
+const GLANCE_SLOT_MS = 6500
+const GLANCE_MS = 1200
+const HOP_MS = 200
+
+const planKindOf = (now: number): Plan['kind'] | null => {
+    const shown = demoAt === null ? currentMood(now) : mood
+    if (editorToy !== null) {
+        return editorToy.kind === 'ball' ? 'chase' : null
+    }
+    if (oneShotOf(now) > 0 || action !== null || jumpAt !== null) {
+        return null
+    }
+    if (canEatAt(now, shown)) {
+        return 'eat'
+    }
+    if (turnAt !== null && (shown === 'think' || shown === 'tool')) {
+        return 'work'
+    }
+
+    return shown === 'idle' ? 'wander' : null
+}
+
+const rollerOf = (seed: number): (() => number) => {
+    let state = Math.abs(Math.floor(seed)) % 233280
+
+    return () => {
+        state = (state * 9301 + 49297) % 233280
+
+        return state / 233280
+    }
+}
+
+const walkOf = (from: number, to: number, speed: number): Leg => ({ from, to, ms: Math.max(1, Math.round(Math.abs(to - from) / speed)) })
+
+const planOf = (kind: Plan['kind'], x: number, maxX: number, now: number): Plan => {
+    const speed = walkPaceOf(feelingOf(now).vibe)
+    const from = Math.max(0, Math.min(maxX, x))
+    const legs: Leg[] = []
+    if (kind !== 'wander') {
+        const to = Math.max(0, Math.min(maxX, kind === 'work' ? maxX : kind === 'chase' ? editorToy?.targetX ?? from : (editorFood?.x ?? from) + 1 - SPRITE_W / 2))
+        const pace = kind === 'chase' || (kind === 'eat' && editorFood?.isHanded === true) ? CHASE_CELLS_PER_MS : speed
+        legs.push(...(from === to ? [] : [walkOf(from, to, pace)]), { from: to, to, ms: 3600000 })
+    } else {
+        const roll = rollerOf(now)
+        legs.push({ from, to: from, ms: 2000 + Math.round(roll() * 3000) })
+        let at = from
+        for (let i = 0; i < 6; i++) {
+            const to = i === 5 ? from : Math.round(roll() * maxX)
+            const walk = walkOf(at, to, speed)
+            if (to !== at) {
+                legs.push(walk)
+            }
+            legs.push({ from: to, to, ms: Math.max(1000, WANDER_PAUSE_MS + Math.round(roll() * WANDER_JITTER_MS) - (to === at ? 0 : walk.ms)) })
+            at = to
+        }
+    }
+
+    return { kind, startAt: now, maxX, legs, total: legs.reduce((sum, leg) => sum + leg.ms, 0), isFacingLeft: anchorFacingLeft }
+}
+
+const poseAt = (plan: Plan, now: number): { x: number; isWalking: boolean; isFacingLeft: boolean } => {
+    let isFacingLeft = plan.isFacingLeft
+    let left = Math.max(0, now - plan.startAt) % Math.max(1, plan.total)
+    for (const leg of plan.legs) {
+        if (leg.to !== leg.from) {
+            isFacingLeft = leg.to < leg.from
+        }
+        if (left < leg.ms) {
+            return { x: leg.from + (leg.to - leg.from) * (left / leg.ms), isWalking: leg.to !== leg.from, isFacingLeft }
+        }
+        left -= leg.ms
+    }
+
+    return { x: plan.legs[0]?.from ?? anchorX, isWalking: false, isFacingLeft }
+}
+
+const glanceAt = (t: number): { lookX: number; lift: number } => {
+    const slot = Math.floor(t / GLANCE_SLOT_MS)
+    const roll = rollerOf(slot * 7919 + (buddy?.hatchedAt ?? 0))
+    const start = slot * GLANCE_SLOT_MS + Math.round(roll() * (GLANCE_SLOT_MS - GLANCE_MS))
+    const lookX = Math.round(roll() * 2) - 1
+    const isHop = roll() < (feelingOf(t).vibe === 'joyful' ? 0.6 : 0.25)
+    if (t < start || t >= start + GLANCE_MS) {
+        return { lookX: 0, lift: 0 }
+    }
+
+    return { lookX, lift: isHop && t < start + HOP_MS ? 1 : 0 }
+}
+
+const settlePlan = (now: number, cols: number): void => {
+    const kind = planKindOf(now)
+    const maxX = maxXOf(cols)
+    if (wanderPlan !== null && wanderPlan.kind === kind && wanderPlan.maxX === maxX) {
+        return
+    }
+    if (wanderPlan !== null) {
+        const at = poseAt(wanderPlan, now)
+        anchorX = Math.round(at.x)
+        anchorFacingLeft = at.isFacingLeft
+        wanderPlan = null
+    }
+    if (kind !== null) {
+        wanderPlan = planOf(kind, anchorX, maxX, now)
+    }
+}
+
+const editorFrameOf = (now: number, cols: number, offset = 0): Uint32Array => {
+    settlePlan(now, cols)
+    const isTyping = now + offset - typingAt < TYPING_LOOK_MS
+    const glance = isTyping ? { lookX: -1, lift: 0 } : glanceAt(now + offset)
+    if (wanderPlan === null) {
+        return paint(editorViewOf(now, offset, cols, Math.max(0, Math.min(maxXOf(cols), anchorX)), { isFacingLeft: isTyping || anchorFacingLeft, ...glance }))
+    }
+    const at = poseAt(wanderPlan, now + offset)
+
+    return paint(editorViewOf(now, offset, cols, Math.round(at.x), { isWalking: at.isWalking, isFacingLeft: at.isFacingLeft, ...glance }))
+}
+
+const sceneKeyOf = (now: number, cols: number): string => JSON.stringify([
+    cols,
+    buddy?.species ?? '',
+    buddy?.rarity ?? '',
+    buddy?.isShiny === true,
+    demoAt === null ? currentMood(now) : mood,
+    moodAt,
+    bubble?.text ?? '',
+    hearts,
+    action,
+    snacks.map(snack => snack.at),
+    editorFood === null ? null : [editorFood.at, editorFood.x, editorFood.eatenAt],
+    typingAt,
+    trophyShow?.at ?? 0,
+    hatchAt ?? 0,
+    leave?.at ?? 0,
+    demoAgents ?? agents,
+    feelingOf(now).vibe,
+    seasonOf(now),
+    wanderPlan?.kind ?? '',
+    wanderPlan?.startAt ?? 0,
+    anchorX,
+    anchorFacingLeft,
+    editorToy?.at ?? 0,
+    editorSpark?.at ?? 0,
+])
+
+const gridOf = (now: number): number => Math.floor(now / EDITOR_STEP_MS) * EDITOR_STEP_MS
+
+const editorFrameAt = (now: number, cols: number, at: number): Uint32Array => {
+    settlePlan(now, cols)
+    const key = sceneKeyOf(now, cols)
+    if (filmCache.key !== key) {
+        filmCache = { key, frames: new Map() }
+    }
+    const cached = filmCache.frames.get(at)
+    if (cached !== undefined) {
+        return cached
+    }
+    const cells = editorFrameOf(now, cols, at - now)
+    filmCache.frames.forEach((_, time) => {
+        if (time < now - EDITOR_STEP_MS * 2) {
+            filmCache.frames.delete(time)
+        }
+    })
+    filmCache.frames.set(at, cells)
+
+    return cells
+}
+
+const editorPictureOf = (now: number, cols: number): string => {
+    serveFood(now, cols)
+    const start = gridOf(now)
+    const film = Array.from({ length: EDITOR_AHEAD_FRAMES }, (_, i) => editorFrameAt(now, cols, start + i * EDITOR_STEP_MS))
+    const [cells = new Uint32Array(0)] = film
+    const isSameFilm = editorShot !== null && editorShot.cols === cols && editorShot.film.length === film.length && film.every((one, i) => sameCells(one, editorShot?.film[i] ?? new Uint32Array(0)))
+    if (editorShot === null || !isSameFilm) {
+        editorShot = { cols, cells, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX) }
+    }
+
+    return editorShot.svg
+}
+
+const isEditorFrameStale = (now: number): boolean => {
+    if (editorShot === null || buddy === null || !isShown(now)) {
+        return false
+    }
+    const cells = editorFrameAt(now, editorShot.cols, gridOf(now))
+
+    return cells !== editorShot.cells && !sameCells(cells, editorShot.cells)
+}
+
+const watchEditorFrames = ($: EngineInterface, now: number): void => {
+    if (now - stageDrawnAt >= EDITOR_FRESH_MS) {
+        editorTimer?.cancel()
+        editorTimer = null
+
+        return
+    }
+    editorTimer ??= $.clock.every(EDITOR_TICK_MS, () => void $.clock.now().then(at => {
+        if (at - stageDrawnAt >= EDITOR_FRESH_MS) {
+            editorTimer?.cancel()
+            editorTimer = null
+
+            return
+        }
+        settleFood($, at)
+        settleToy($, at)
+        if (isEditorFrameStale(at)) {
+            $.ui.invalidate('ui.render')
+        }
+    }).catch((error: unknown) => {
+        lastDeny = `editor frame failed: ${String(error)}`
+    }))
+}
+
+const editorKeyOf = (now: number): string => JSON.stringify([
+    planKindOf(now),
+    demoAt === null ? currentMood(now) : mood,
+    bubble?.text ?? '',
+    hearts.length > 0,
+    action?.kind ?? '',
+    snacks[0]?.at ?? 0,
+    trophyShow?.id ?? '',
+    hatchAt !== null,
+    leave !== null,
+    demoAgents ?? agents,
+    seasonOf(now),
+    isOff,
+    menuPage,
+    cardAt !== null,
+    caseAt !== null,
+    buddy === null ? '' : headerOf(buddy, now, feelingOf(now)),
+    editorToy?.at ?? 0,
+    isRu(),
+])
+
+const ate = ($: EngineInterface, at: unknown, isHanded: boolean, now: number): void => {
+    const eaten = snacks.find(one => one.at === at)
+    if (eaten === undefined) {
+        return
+    }
+    snacks = snacks.filter(one => one !== eaten)
+    grow($, now, eaten.kind)
+    if (isHanded) {
+        hearts = [now, now + 250, now + 500]
+        cherish($, 6, now)
+    }
+}
+
+const petByHand = ($: EngineInterface, now: number): void => {
+    pet(now)
+    cherish($, 8, now)
+    if (buddy?.species === 'duck' && now - dizzyAt < DUCK_MS) {
+        award($, 'rubber-duck', now)
+    }
+}
+
+const caught = ($: EngineInterface, kind: 'ball' | 'shuriken', now: number): void => {
+    if (kind === 'shuriken') {
+        action = { kind: 'swing', at: now - SWING_MS * 0.4 }
+        sayText(t('hai!', 'кия!'), now)
+    } else {
+        setMood('happy', now)
+        sayText(t('got it!', buddy === null ? 'поймал!' : byGender(buddy.species, 'поймал!', 'поймала!')), now)
+    }
+    catches = [...catches.filter(at => now - at < BALL_WINDOW_MS), now]
+    if (catches.length >= BALLS) {
+        award($, 'ball', now)
+    }
+    cherish($, 5, now)
+}
+
+const petXAt = (now: number): number => (wanderPlan === null ? anchorX : poseAt(wanderPlan, now).x)
+
+const canEatAt = (now: number, shown: Mood): boolean =>
+    editorFood !== null && editorFood.eatenAt === null && now >= editorFood.landAt && shown !== 'sleep' && editorToy === null
+    && (turnAt === null || editorFood.kind === 'berry' || editorFood.isHanded)
+
+const serveFood = (now: number, cols: number): void => {
+    const snack = snacks[0]
+    if (editorFood !== null || snack === undefined) {
+        return
+    }
+    const x = foodXOf(petXAt(now), cols, rollerOf(snack.at)())
+    editorFood = { kind: snack.kind, at: snack.at, x, landAt: snack.at + FOOD_FALL_MS, isHanded: snack.isHanded === true, eatenAt: null }
+}
+
+const eatAtOf = (): number | null => {
+    if (editorFood?.eatenAt !== null && editorFood?.eatenAt !== undefined) {
+        return editorFood.eatenAt
+    }
+    const [walk] = wanderPlan?.kind === 'eat' ? wanderPlan.legs : []
+
+    return walk === undefined || wanderPlan === null ? null : wanderPlan.startAt + (walk.to === walk.from ? 0 : walk.ms)
+}
+
+const settleFood = ($: EngineInterface, now: number): void => {
+    if (isClientMode || stageDrawnAt === 0) {
+        return
+    }
+    serveFood(now, editorShot?.cols ?? EDITOR_COLS)
+    if (editorFood === null) {
+        return
+    }
+    if (editorFood.eatenAt !== null) {
+        if (now - editorFood.eatenAt > EAT_SHOW_MS) {
+            editorFood = null
+        }
+
+        return
+    }
+    const eatAt = eatAtOf()
+    if (eatAt === null || now < eatAt) {
+        return
+    }
+    editorFood = { ...editorFood, eatenAt: eatAt }
+    ate($, editorFood.at, editorFood.isHanded, now)
+}
+
+const foodViewAt = (t: number): FoodView | null => {
+    if (editorFood === null) {
+        return null
+    }
+    const eatenAt = eatAtOf()
+    if (eatenAt !== null && t - eatenAt > EAT_SHOW_MS) {
+        return null
+    }
+
+    return {
+        kind: editorFood.kind,
+        x: editorFood.x,
+        y: foodYOf(editorFood.landAt, t),
+        eatenAge: eatenAt !== null && t >= eatenAt ? t - eatenAt : null,
+    }
+}
+
+const throwToy = (now: number): void => {
+    if (buddy === null || editorToy !== null) {
+        return
+    }
+    const cols = editorShot?.cols ?? EDITOR_COLS
+    const maxX = maxXOf(cols)
+    const petX = petXAt(now)
+    if (buddy.species === 'ninja') {
+        editorToy = { kind: 'shuriken', at: now, fromX: cols - 1, x: cols - 1, y: 1, targetX: petX, catchAt: now + SHURIKEN_MS }
+
+        return
+    }
+    const center = petX + SPRITE_W / 2
+    const far = maxX + SPRITE_W - 3
+    const isToLeft = center > (maxX + SPRITE_W) / 2
+    const lo = isToLeft ? 1 : Math.min(far, Math.round(center + BALL_FAR))
+    const hi = isToLeft ? Math.max(1, Math.round(center - BALL_FAR)) : far
+    const x = lo + Math.round(rollerOf(now)() * (hi - lo))
+    const targetX = Math.max(0, Math.min(maxX, x + 1 - SPRITE_W / 2))
+    const runMs = Math.abs(targetX - petX) / CHASE_CELLS_PER_MS
+    editorToy = { kind: 'ball', at: now, fromX: isToLeft ? 0 : cols - 2, x, y: 2, targetX, catchAt: now + Math.max(BALL_FLY_MS + CATCH_AFTER_MS, Math.round(runMs) + 60) }
+}
+
+const catchAtOf = (toy: NonNullable<typeof editorToy>): number => {
+    const [run] = toy.kind === 'ball' && wanderPlan?.kind === 'chase' ? wanderPlan.legs : []
+    if (run === undefined || wanderPlan === null) {
+        return toy.catchAt
+    }
+
+    return Math.max(toy.at + BALL_FLY_MS + CATCH_AFTER_MS, wanderPlan.startAt + (run.to === run.from ? 0 : run.ms) + 60)
+}
+
+const ballAt = (toy: NonNullable<typeof editorToy>, t: number): { x: number; y: number } => {
+    const age = t - toy.at
+    if (age >= BALL_FLY_MS) {
+        return { x: toy.x, y: ballYOf(age - BALL_FLY_MS) }
+    }
+    const p = age / BALL_FLY_MS
+
+    return { x: Math.round(toy.fromX + (toy.x - toy.fromX) * p), y: Math.round(toy.y - (toy.y + 1) * p) }
+}
+
+const settleToy = ($: EngineInterface, now: number): void => {
+    if (editorToy === null || now < catchAtOf(editorToy)) {
+        if (editorSpark !== null && now - editorSpark.at > SPARK_KEEP_MS) {
+            editorSpark = null
+        }
+
+        return
+    }
+    const toy = editorToy
+    const catchAt = catchAtOf(toy)
+    editorSpark = toy.kind === 'ball' ? { at: catchAt, ...ballAt(toy, catchAt) } : null
+    editorToy = null
+    caught($, toy.kind, now)
+}
+
+const toyViewOf = (t: number, x0: number, isFacingLeft: boolean): View['toy'] => {
+    if (editorToy === null || t >= catchAtOf(editorToy)) {
+        return null
+    }
+    const age = t - editorToy.at
+    if (editorToy.kind === 'ball') {
+        return { kind: 'ball', ...ballAt(editorToy, t), age }
+    }
+    const handX = handXOf(x0, isFacingLeft)
+    const p = Math.min(1, age / SHURIKEN_MS)
+
+    return { kind: 'shuriken', x: Math.round(editorToy.x + (handX - editorToy.x) * p), y: Math.round(editorToy.y + (HAND_Y - editorToy.y) * p), age }
+}
+
+const sparkViewOf = (t: number): View['spark'] => {
+    const catchAt = editorToy === null ? 0 : catchAtOf(editorToy)
+    const spark = editorToy !== null && editorToy.kind === 'ball' && t >= catchAt ? { at: catchAt, ...ballAt(editorToy, catchAt) } : editorSpark
+
+    return spark === null || t < spark.at ? null : { x: spark.x, y: spark.y, age: t - spark.at }
+}
+
+const pressEditor = ($: EngineInterface, key: string) => (): Promise<void> => $.clock.now().then(now => pressEditorAt($, key, now))
+
+const pressEditorAt = async ($: EngineInterface, key: string, now: number): Promise<void> => {
+    lastSeenAt = now
+    if (key === 'pet') {
+        petByHand($, now)
+    } else if (key === 'feed') {
+        feedByHand(now, true)
+    } else if (key === 'ball') {
+        throwToy(now)
+    } else if (key === 'card' || key === 'trophies') {
+        menuPage = null
+        cardAt = key === 'card' ? now : null
+        caseAt = key === 'trophies' ? now : null
+        isCardInChat = false
+    } else if (key === 'card-close' || key === 'trophies-close') {
+        menuPage = null
+        cardAt = null
+        caseAt = null
+    } else if (key === 'unhide') {
+        await perform($, now, 'on', [])
+    } else {
+        await pressMenu($, now, key)
+    }
+    $.ui.invalidate('ui.render')
+}
+
+const drawEditor = ($: EngineInterface, e: ResolveInput, now: number, bodyColumns: number): RenderElement | null => {
+    if (e.surface === 'terminal' || e.surface === 'mobile') {
+        return null
+    }
+    isEditorAttached = isEditorAttached || e.surface === 'vscode'
+    stageDrawnAt = now
+    beginArrival(now)
+    const { Box, Text, Button, Svg } = $.ui.resolve(e)
+    const current = buddy
+    if (current === null) {
+        return <Text dimColor>{t('Your buddy is hatching…', 'Питомец вылупляется…')}</Text>
+    }
+    if (isOff) {
+        return (
+            <Box key="buddy-stage" flexDirection="row" columnGap={1}>
+                <Text dimColor>{t(`${current.name} is hiding`, `${current.name} ${byGender(current.species, 'спрятался', 'спряталась')}`)}</Text>
+                <Button key="editor-unhide" plain onPress={pressEditor($, 'unhide')}>{t('[bring back]', '[вернуть]')}</Button>
+            </Box>
+        )
+    }
+    const cols = EDITOR_COLS
+    const strip = editorPictureOf(now, cols)
+    const menu = menuOf()
+    const chip = (key: string, label: string, press: string) => <Button key={key} plain dimColor onPress={pressEditor($, press)}>{label}</Button>
+
+    return (
+        <Box key="buddy-stage" flexDirection="column" alignItems="flex-end">
+            <Box flexDirection="row" flexWrap="nowrap" alignItems="flex-end" columnGap={1}>
+                <Svg source={strip} alt={`${current.name}, ${speciesOf(current.species).name}${bubble === null ? '' : `: ${bubble.text}`}`} width={cols * EDITOR_PX} height={ROWS * 2 * EDITOR_PX} />
+                <Box flexDirection="column" rowGap={0.25}>
+                    <Box flexDirection="row" flexWrap="nowrap" columnGap={1}>
+                        {chip('editor-heart', '❤️', 'pet')}
+                        {chip('editor-snack', '🍪', 'feed')}
+                    </Box>
+                    <Box flexDirection="row" flexWrap="nowrap" columnGap={1}>
+                        {chip('editor-ball', current.species === 'ninja' ? '✦' : '⚾', 'ball')}
+                        {chip('editor-menu', menu === null ? '⋯' : '×', menu === null ? 'open' : 'close')}
+                    </Box>
+                </Box>
+            </Box>
+            {menu === null ? null : (
+                <Box flexDirection="column" alignItems="flex-end">
+                    {menu.header === undefined ? null : <Text color={MENU_HEADER_COLOR}>{menu.header}</Text>}
+                    <Box flexDirection="row" flexWrap="wrap" justifyContent="flex-end" columnGap={1}>
+                        {menu.items.filter(item => item.key !== 'close').map(item => (
+                            <Button key={`editor-${item.key}`} plain onPress={pressEditor($, item.key)}>
+                                <Text color={MENU_EDGE_COLOR}>[</Text>
+                                <Text color={item.isOn ? MENU_ON_COLOR : MENU_TEXT_COLOR}>{item.label}</Text>
+                                <Text color={MENU_EDGE_COLOR}>]</Text>
+                            </Button>
+                        ))}
+                    </Box>
+                </Box>
+            )}
+            {drawCard($, e, now, bodyColumns || CARD_COLS)}
+            {drawCase($, e, now, bodyColumns || CARD_COLS)}
+        </Box>
+    )
+}
+
+const dropSnack = (kind: SnackKind, now: number, isHanded = false): void => {
     if (buddy === null || snacks.length >= SNACK_QUEUE) {
         return
     }
-    snacks = [...snacks, { kind, at: now + snacks.length }]
+    snacks = [...snacks, { kind, at: now + snacks.length, isHanded }]
 }
 
-const feedByHand = (now: number): string => {
+const feedByHand = (now: number, isHanded = false): string => {
     if (buddy === null) {
         return ''
     }
@@ -662,7 +1250,7 @@ const feedByHand = (now: number): string => {
 
         return t(`${buddy.name} is full`, `${buddy.name} больше не хочет есть`)
     }
-    dropSnack('berry', now)
+    dropSnack('berry', now, isHanded)
 
     return t(`${buddy.name} got a berry`, `ягода для ${buddy.name}`)
 }
@@ -755,6 +1343,7 @@ const bandPropsOf = (now: number): BandProps | null => {
         rows: rowsOf(cols, menuOf()),
         species: buddy.species,
         rarity: buddy.rarity,
+        growth: growthOf(buddy, now),
         mood: demoAt === null ? currentMood(now) : mood,
         moodAt,
         isWorking: turnAt !== null,
@@ -768,7 +1357,7 @@ const bandPropsOf = (now: number): BandProps | null => {
         action,
         season: seasonOf(now),
         menu: menuOf(),
-        snack: snacks[0] ?? null,
+        snack: snacks[0] === undefined ? null : { kind: snacks[0].kind, at: snacks[0].at },
         isShiny: buddy.isShiny === true,
         vibe: feelingOf(now).vibe,
         trophy: trophyShow === null ? null : { rarity: trophyOf(trophyShow.id).rarity, at: trophyShow.at },
@@ -875,11 +1464,22 @@ const frame = async ($: EngineInterface): Promise<void> => {
     if (frames % SYNC_EVERY_FRAMES === 0) {
         await syncShared($)
     }
+    settleFood($, now)
+    settleToy($, now)
+    if (stageDrawnAt !== 0) {
+        const key = editorKeyOf(now)
+        if (key !== lastStageKey) {
+            lastStageKey = key
+            $.ui.invalidate('ui.render')
+        }
+        watchEditorFrames($, now)
+    }
     if (buddy === null || !isShown(now)) {
         clientHeardFrame = null
         return
     }
     restartSilentClient($)
+    celebrateGrowth($, now)
     if (footerAt === 0 && !isAboveChecked && now - startedAt > FOOTER_WAIT_MS) {
         isAboveChecked = true
         $.ui.invalidate('ui.render')
@@ -890,6 +1490,39 @@ const frame = async ($: EngineInterface): Promise<void> => {
             lastPropsKey = key
             $.ui.invalidate('ui.render')
         }
+    }
+}
+
+const isInEditor = async ($: EngineInterface): Promise<boolean> => {
+    const surfaces = await $.session.surfaces().catch(() => [])
+
+    return surfaces.length === 0 ? isEditorAttached : surfaces.every(one => one === 'vscode')
+}
+
+const openStage = async ($: EngineInterface): Promise<string | null> => {
+    if (!(await isInEditor($))) {
+        return t('the panel lives in VS Code and Cursor; here the buddy is at the bottom right', 'панель есть в VS Code и Cursor, здесь питомец живет справа внизу')
+    }
+    const opened = await $.ui.open({ id: PANE_ID, title: 'Pixel Buddy' }).catch((error: unknown) => ({ isPlaced: false as const, reason: String(error) }))
+
+    return opened.isPlaced ? null : opened.reason
+}
+
+const celebrateGrowth = ($: EngineInterface, now: number): void => {
+    if (buddy === null || hatchAt !== null) {
+        return
+    }
+    const growth = growthOf(buddy, now)
+    if (buddy.growth === growth) {
+        return
+    }
+    const isGrownUp = buddy.growth !== undefined
+    saveBuddy($, { ...buddy, growth })
+    if (isGrownUp) {
+        sayText(growth === 'adult'
+            ? t('I am all grown up now!', byGender(buddy.species, 'я совсем взрослый!', 'я совсем взрослая!'))
+            : t('look, I grew up a bit!', byGender(buddy.species, 'смотри, я подрос!', 'смотри, я подросла!')), now)
+        hearts = [now, now + 250, now + 500]
     }
 }
 
@@ -1041,6 +1674,7 @@ const HELP_RU = [
     '  /buddy fact          факт прямо сейчас',
     '  /buddy facts on|off  факты, пока Claude работает',
     '  /buddy on            вернуть после hide',
+    '  /buddy panel         панель питомца справа (VS Code и Cursor)',
     '  /buddy hatch [cat, duck, ghost, octopus, axolotl, robot, ninja, penguin]',
     '  /buddy theme [auto, winter, halloween, off] · /buddy off',
     '',
@@ -1069,6 +1703,7 @@ const help = (): string => isRu() ? HELP_RU.join('\n') : [
     '  /buddy fact          a fact right now',
     '  /buddy facts on|off  facts while Claude works',
     '  /buddy on            bring it back after hide',
+    '  /buddy panel         the buddy panel on the right (VS Code and Cursor)',
     '  /buddy hatch [cat, duck, ghost, octopus, axolotl, robot, ninja, penguin]',
     '  /buddy theme [auto, winter, halloween, off] · /buddy off',
     '',
@@ -1082,6 +1717,9 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
         await loadBuddy($, now)
     }
     const current = buddy as Buddy
+    if ((arg === '' || arg === 'card') && (await isInEditor($))) {
+        return `${headerOf(current, now, feelingOf(now))}\n${t('⋯ next to the buddy opens the menu · /buddy help lists commands', '⋯ рядом с питомцем открывает меню · /buddy help покажет команды')}`
+    }
     if (arg === '' || arg === 'card') {
         const others = nest.map(one => t(`${one.name} the ${speciesOf(one.species).name}, lv${levelOf(one.xp ?? 0).level}`, `${one.name}, ${speciesOf(one.species).name}, ур${levelOf(one.xp ?? 0).level}`)).join(' · ')
         const nestLine = nest.length === 0 ? t('your nest: just this one so far', 'в гнезде пока только этот питомец') : t(`also in your nest: ${others}`, `еще в гнезде: ${others}`)
@@ -1091,6 +1729,11 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
     }
     if (arg === 'feed') {
         return feedByHand(now)
+    }
+    if (arg === 'panel') {
+        const problem = await openStage($)
+
+        return problem ?? t('In VS Code and Cursor the buddy panel opens on the right', 'В VS Code и Cursor панель питомца открывается справа')
     }
     if (arg === 'trophies') {
         caseAt = now
@@ -1206,6 +1849,7 @@ const perform = async ($: EngineInterface, now: number, arg: string, rest: reado
             `menu: ${lastMenuKey || 'never pressed'}`,
             `card: ${cardAt === null ? 'closed' : `open ${Math.round((now - cardAt) / 1000)} s, ${cardDrawnAt >= cardAt ? 'drawn above the prompt' : isCardInChat ? 'sent to the chat' : 'not drawn yet'}`}`,
             `above the prompt drawn ${aboveDraws} times, frames ${timer === null ? 'stopped' : 'running'}`,
+            `above the prompt asked on: ${[...aboveSurfaces].join(', ') || 'none'}`,
             `problems: ${lastDeny || 'none'}`,
         ].join('\n')
     }
@@ -1289,12 +1933,16 @@ const pressMenu = async ($: EngineInterface, now: number, key: string): Promise<
     $.ui.invalidate('ui.render')
 }
 
-const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: string }, theirs: RenderElement, width: number, isFooter: boolean): Promise<RenderElement> => {
-    const now = await $.clock.now()
+const beginArrival = (now: number): void => {
     if (isArrivalPending) {
         isArrivalPending = false
         hatchAt = now
     }
+}
+
+const drawBand = async ($: EngineInterface, e: ResolveInput & { requestId?: string }, theirs: RenderElement, width: number, isFooter: boolean): Promise<RenderElement> => {
+    const now = await $.clock.now()
+    beginArrival(now)
     cols = Math.min(WIDTH, width)
     const band = bandPropsOf(now)
     const props = band === null ? null : { ...band, isDesktop: e.surface !== 'terminal' }
@@ -1352,6 +2000,18 @@ export const register: Register = (on, options) => {
 
         return { text: await perform($, now, ALIASES[word] ?? word, rest) }
     }).catch(() => ({ text: t('pixel-buddy hit an error here, /buddy debug shows the last one', 'в pixel-buddy случилась ошибка, /buddy debug покажет последнюю') }))
+
+    on('session.attach', async ($, e, next) => {
+        isEditorAttached = isEditorAttached || e.surface === 'vscode'
+
+        return next(e)
+    })
+
+    on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {
+        const now = await $.clock.now()
+
+        return drawEditor($, e, now, e.props.bodyColumns) ?? next(e)
+    })
 
     on('prompt.edit', ($, e, next) => {
         void $.clock.now().then(now => {
@@ -1413,7 +2073,6 @@ export const register: Register = (on, options) => {
                 setMood('idle', now)
             }
         }
-
         return next(e)
     })
 
@@ -1498,11 +2157,7 @@ export const register: Register = (on, options) => {
         lastMessage = `${kind ?? 'unknown'} ${new Date(now).toLocaleTimeString()}`
         lastSeenAt = now
         if (kind === 'pet') {
-            pet(now)
-            cherish($, 8, now)
-            if (buddy?.species === 'duck' && now - dizzyAt < DUCK_MS) {
-                award($, 'rubber-duck', now)
-            }
+            petByHand($, now)
         }
         if (kind === 'jump') {
             startJump(now)
@@ -1516,30 +2171,10 @@ export const register: Register = (on, options) => {
         }
         if (kind === 'ate') {
             const data = e.data as { at?: unknown; isHanded?: unknown } | null
-            const eaten = snacks.find(one => one.at === data?.at)
-            if (eaten !== undefined) {
-                snacks = snacks.filter(one => one !== eaten)
-                grow($, now, eaten.kind)
-                if (data?.isHanded === true) {
-                    hearts = [now, now + 250, now + 500]
-                    cherish($, 6, now)
-                }
-            }
+            ate($, data?.at, data?.isHanded === true, now)
         }
         if (kind === 'caught') {
-            const toy = (e.data as { kind?: string } | null)?.kind
-            if (toy === 'shuriken') {
-                action = { kind: 'swing', at: now - SWING_MS * 0.4 }
-                sayText(t('hai!', 'кия!'), now)
-            } else {
-                setMood('happy', now)
-                sayText(t('got it!', buddy === null ? 'поймал!' : byGender(buddy.species, 'поймал!', 'поймала!')), now)
-                catches = [...catches.filter(at => now - at < BALL_WINDOW_MS), now]
-                if (catches.length >= BALLS) {
-                    award($, 'ball', now)
-                }
-            }
-            cherish($, 5, now)
+            caught($, (e.data as { kind?: string } | null)?.kind === 'shuriken' ? 'shuriken' : 'ball', now)
         }
         const props = bandPropsOf(now)
 
@@ -1569,6 +2204,14 @@ export const register: Register = (on, options) => {
     on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
         const now = await $.clock.now()
         aboveDraws += 1
+        aboveSurfaces.add(e.surface)
+        if (e.surface === 'vscode') {
+            const theirs = await next(e)
+            const stage = drawEditor($, e, now, e.props.bodyColumns)
+            const { Box } = $.ui.resolve(e)
+
+            return stage === null ? theirs : <Box key="buddy-above" flexDirection="column">{theirs}{stage}</Box>
+        }
         const isInFooter = e.surface === 'terminal' && (footerAt === 0 ? now - startedAt < FOOTER_WAIT_MS : isFooterFit)
         const card = isShown(now) && !e.props.hasSurvey ? drawCard($, e, now, e.props.bodyColumns) ?? drawCase($, e, now, e.props.bodyColumns) : null
         const { Box } = $.ui.resolve(e)

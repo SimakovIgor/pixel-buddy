@@ -1,7 +1,7 @@
 import { rarityOf } from './buddy'
 import type { Rarity, SnackKind, Vibe } from './buddy'
-import { NAP_H, SPRITE_H, SPRITE_W, speciesOf } from './species'
-import type { SpeciesId } from './species'
+import { NAP_H, SPRITE_H, SPRITE_W, framesOf, miniOf, napOf, speciesOf } from './species'
+import type { Growth, SpeciesId } from './species'
 
 export const DEFAULT = 0x01000000
 export const ROWS = 3
@@ -58,6 +58,7 @@ export type View = {
     vibe: Vibe
     trophy: TrophyView | null
     isDesktop?: boolean
+    growth?: Growth
 }
 
 export type Leave = { species: SpeciesId; age: number }
@@ -342,7 +343,7 @@ const tintOf = (v: View, color: number, light: number): number => (v.isDesktop =
 const drawSprite = (c: Canvas, v: View, x0: number, size = 1, light = 1): void => {
     const species = speciesOf(v.species)
     const palette = paletteOf(v)
-    const frame = cycle(species.frames, frameIndex(v)).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
+    const frame = cycle(framesOf(v.species, v.growth), frameIndex(v)).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
     const body = palette.b ?? WHITE
     const shade = palette.s ?? body
     const eye = eyeColor(v, body, shade, palette.e ?? 0)
@@ -464,7 +465,7 @@ const drawNap = (c: Canvas, v: View, x0: number): void => {
     const body = palette.b ?? WHITE
     const lid = palette.z ?? palette.s ?? body
     const isInhale = Math.floor(v.t / BREATH_MS) % 2 === 0
-    species.nap.forEach((line, dy) => [...line].forEach((cell, dx) => {
+    napOf(v.species, v.growth).forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell === '.' || (cell === '^' && !isInhale)) {
             return
         }
@@ -500,7 +501,7 @@ const drawTrail = (c: Canvas, v: View, x0: number): void => {
     const body = palette.b ?? WHITE
     const isDark = Math.max((body >> 16) & 0xff, (body >> 8) & 0xff, body & 0xff) < 0x60
     const tint = isDark ? scale(body, 2.6) : body
-    const frame = (species.frames[0] ?? []).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
+    const frame = (framesOf(v.species, v.growth)[0] ?? []).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
     ghostsOf(v, x0).reverse().forEach(ghost => {
         const fade = (1 - ghost.age / TRAIL_MS) * 0.7
         frame.forEach((line, dy) => [...line].forEach((cell, dx) => {
@@ -582,9 +583,12 @@ const LASER = 0xff3b4a
 const RADAR = 0x4cff8a
 const WISP = 0xc9c3ef
 
-const juggle: Trick = (c, _v, x0, age) => {
+const juggleOf = (isBehind: boolean): Trick => (c, _v, x0, age) => {
     JUGGLE.forEach((color, k) => {
         const angle = (age / 900 + k / 3) * Math.PI * 2
+        if (Math.sin(angle) > 0 !== isBehind) {
+            return
+        }
         const x = x0 + 4 + Math.cos(angle) * 7
         const y = 2 - Math.sin(angle) * 2.2
         const tint = scale(color, trickFadeOf(age))
@@ -688,7 +692,7 @@ const scan: Trick = (c, v, _x0, age, side) => {
 }
 
 const TRICKS: Partial<Record<SpeciesId, Trick>> = {
-    octopus: juggle,
+    octopus: juggleOf(false),
     axolotl: blowBubbles,
     penguin: sing,
     cat: chaseMoth,
@@ -697,9 +701,13 @@ const TRICKS: Partial<Record<SpeciesId, Trick>> = {
     robot: scan,
 }
 
-const drawTrick = (c: Canvas, v: View, x0: number): void => {
+const TRICKS_BEHIND: Partial<Record<SpeciesId, Trick>> = {
+    octopus: juggleOf(true),
+}
+
+const drawTrick = (c: Canvas, v: View, x0: number, tricks = TRICKS): void => {
     const age = trickAgeOf(v)
-    const trick = TRICKS[v.species]
+    const trick = tricks[v.species]
     if (age === null || trick === undefined) {
         return
     }
@@ -1026,7 +1034,8 @@ const drawHat = (c: Canvas, v: View, x0: number, size = 1, light = 1): void => {
         return
     }
     const hat = HATS[v.season]
-    const y = v.jump === null ? liftOf(v) : wholeCellsOf(v, v.pose.lift)
+    const top = Math.max(0, (framesOf(v.species, v.growth)[0] ?? []).findIndex(line => /[^.]/.test(line)))
+    const y = (v.jump === null ? liftOf(v) : wholeCellsOf(v, v.pose.lift)) + top
     const x = x0 + shakeOf(v)
     hat.art.forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell === '.') {
@@ -1100,8 +1109,9 @@ type BubbleSide = { isLeft: boolean; room: number; edge: number }
 
 const bubbleSideOf = (c: Canvas, v: View, x0: number): BubbleSide => {
     const minis = Math.min(3, v.agents)
-    const left = x0 - (!v.pose.isFacingLeft && minis > 0 ? minis * 3 : 0)
-    const right = x0 + SPRITE_W + (v.pose.isFacingLeft && minis > 0 ? minis * 3 + 1 : 0)
+    const step = (miniOf(v.species, 0)[0]?.length ?? 6) + 1
+    const left = x0 - (!v.pose.isFacingLeft && minis > 0 ? minis * step : 0)
+    const right = x0 + SPRITE_W + (v.pose.isFacingLeft && minis > 0 ? minis * step + 1 : 0)
     const roomLeft = left - 2
     const roomRight = c.width - right - 2
 
@@ -1134,19 +1144,19 @@ const drawAura = (c: Canvas, v: View, x0: number): void => {
 
 const drawMinis = (c: Canvas, v: View, x0: number): void => {
     const palette = paletteOf(v)
-    const color = palette.b ?? WHITE
-    const eye = palette.e ?? 0
-    const behind = v.pose.isFacingLeft ? x0 + SPRITE_W + 1 : x0 - 3
-    const step = v.pose.isFacingLeft ? 3 : -3
+    const body = palette.b ?? WHITE
+    const width = miniOf(v.species, 0)[0]?.length ?? 6
+    const step = width + 1
+    const behind = v.pose.isFacingLeft ? x0 + SPRITE_W + 1 : x0 - step
     for (let k = 0; k < Math.min(3, v.agents); k++) {
-        const x = behind + k * step
         const hop = Math.floor(v.t / 180 + k) % 2
-        const top = 3 - hop
-        dot(c, x, top, color)
-        dot(c, x + 1, top, color)
-        dot(c, x, top + 1, color)
-        dot(c, x + 1, top + 1, eye)
-        dot(c, x + hop, top + 2, scale(color, 0.7))
+        const x = behind + k * (v.pose.isFacingLeft ? step : -step)
+        const rows = miniOf(v.species, hop).map(line => (v.pose.isFacingLeft ? [...line].reverse().join('') : line))
+        rows.forEach((line, dy) => [...line].forEach((cell, dx) => {
+            if (cell !== '.') {
+                dot(c, x + dx, SPRITE_H - rows.length - hop + dy, palette[cell] ?? body)
+            }
+        }))
     }
 }
 
@@ -1413,7 +1423,7 @@ const dive: Hop = (c, v, jump) => {
 const drawBelly = (c: Canvas, v: View, x: number, isHeadRight: boolean): void => {
     const species = speciesOf(v.species)
     const palette = paletteOf(v)
-    species.nap.forEach((line, dy) => [...line].forEach((cell, dx) => {
+    napOf(v.species, v.growth).forEach((line, dy) => [...line].forEach((cell, dx) => {
         if (cell !== '.' && cell !== '^') {
             dot(c, isHeadRight ? x + dx : x + SPRITE_W - 1 - dx, SPRITE_H - NAP_H + dy, palette[cell] ?? WHITE)
         }
@@ -1485,6 +1495,38 @@ export const toCells = (c: Canvas): Uint32Array => {
     return cells
 }
 
+export const WALK_CELLS_PER_MS = 0.007
+export const CHASE_CELLS_PER_MS = 0.016
+export const SHURIKEN_MS = 450
+export const CATCH_AFTER_MS = 300
+export const FOOD_FALL_MS = 450
+export const EAT_SHOW_MS = 500
+export const FOOD_GROUND = 4
+export const WANDER_PAUSE_MS = 7000
+export const WANDER_JITTER_MS = 9000
+
+export const walkPaceOf = (vibe: Vibe): number => WALK_CELLS_PER_MS * (vibe === 'tired' ? 0.55 : vibe === 'hungry' ? 0.8 : 1)
+
+export const handXOf = (x: number, isFacingLeft: boolean): number => (isFacingLeft ? Math.round(x) + 1 : Math.round(x) + SPRITE_W - 2)
+
+export const HAND_Y = 3
+
+export const foodXOf = (petX: number, cols: number, roll: number): number => {
+    const center = petX + SPRITE_W / 2
+    const way = center > cols / 2 ? -1 : 1
+
+    return Math.round(Math.max(1, Math.min(cols - 3, center + way * (8 + roll * 8))))
+}
+
+export const foodYOf = (landAt: number, t: number): number => (t >= landAt ? FOOD_GROUND : Math.round(FOOD_GROUND - ((landAt - t) / FOOD_FALL_MS) * 6))
+
+export const sameCells = (a: Uint32Array, b: Uint32Array): boolean => a.length === b.length && a.every((value, at) => value === b[at])
+
+export const BALL_GROUND = 4
+
+
+export const ballYOf = (age: number): number => BALL_GROUND - Math.round(5 * Math.exp(-age / 420) * Math.abs(Math.cos(age / 120)))
+
 export const maxXOf = (cols: number): number => Math.max(0, cols - SPRITE_W - 1)
 
 export const paint = (v: View): Uint32Array => {
@@ -1516,6 +1558,7 @@ export const paint = (v: View): Uint32Array => {
         drawSlice(c, v, x0)
         drawFruits(c, v, x0)
         drawTrail(c, v, x0)
+        drawTrick(c, v, x0, TRICKS_BEHIND)
         if (isLying(v)) {
             drawNap(c, v, x0)
         } else {
@@ -1540,11 +1583,11 @@ export const paint = (v: View): Uint32Array => {
     return toCells(c)
 }
 
-export const portraitOf = (species: SpeciesId, rarity: Rarity, isShiny: boolean, season: Season, t: number): Uint32Array => {
+export const portraitOf = (species: SpeciesId, rarity: Rarity, isShiny: boolean, season: Season, t: number, growth: Growth = 'adult'): Uint32Array => {
     const still: View = {
         t, cols: PORTRAIT_COLS, species, rarity, mood: 'idle', moodAge: 0, pose: { x: 0, isFacingLeft: false, isWalking: false, lookX: 0, lift: 0 },
         bubble: null, agents: 0, hatchAge: null, hearts: [], rows: PORTRAIT_ROWS, jump: null, action: null, toy: null, spark: null, season,
-        menu: null, nap: null, trail: [], leave: null, food: null, isShiny, vibe: 'content', trophy: null,
+        menu: null, nap: null, trail: [], leave: null, food: null, isShiny, vibe: 'content', trophy: null, growth,
     }
     const c = canvasOf(PORTRAIT_COLS, PORTRAIT_ROWS)
     drawSprite(c, still, 0, 2)

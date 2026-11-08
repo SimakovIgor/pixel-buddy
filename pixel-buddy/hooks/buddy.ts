@@ -1,7 +1,7 @@
 import { isRu, t } from './i18n'
 import { isSnarky } from './lines'
-import { SPECIES, SPRITE_W, byGender, speciesOf } from './species'
-import type { SpeciesId } from './species'
+import { SPECIES, SPRITE_W, byGender, framesOf, speciesOf } from './species'
+import type { Growth, SpeciesId } from './species'
 
 export const REPO = 'github.com/SimakovIgor/pixel-buddy'
 
@@ -19,6 +19,7 @@ export type Buddy = {
     rarity: Rarity
     stats: Record<StatName, number>
     hatchedAt: number
+    growth?: Growth
     xp?: number
     belly?: Belly
     affection?: Belly
@@ -220,8 +221,8 @@ export const meter = (into: number, need: number): string => {
     return '▰'.repeat(filled) + '▱'.repeat(10 - filled)
 }
 
-const portraitOf = (buddy: Buddy): string[] => {
-    const frame = speciesOf(buddy.species).frames[0] ?? []
+const portraitOf = (buddy: Buddy, now: number): string[] => {
+    const frame = framesOf(buddy.species, growthOf(buddy, now))[0] ?? []
     const filled = (row: number, col: number): boolean => {
         const cell = frame[row]?.[col] ?? '.'
 
@@ -236,6 +237,36 @@ const portraitOf = (buddy: Buddy): string[] => {
     }).join(''))
 }
 
+export const GROWTH_SINCE = Date.UTC(2026, 10, 8, 13, 0, 0)
+export const BABY_DAYS = 7
+export const YOUNG_DAYS = 21
+
+const GROW_DAY_MS = 24 * 3600000
+
+export const growthOf = (buddy: Pick<Buddy, 'hatchedAt'>, now: number): Growth => {
+    const days = (now - buddy.hatchedAt) / GROW_DAY_MS
+    if (buddy.hatchedAt < GROWTH_SINCE || days >= YOUNG_DAYS) {
+        return 'adult'
+    }
+
+    return days < BABY_DAYS ? 'baby' : 'young'
+}
+
+export const daysToGrowOf = (buddy: Pick<Buddy, 'hatchedAt'>, now: number): number => {
+    const growth = growthOf(buddy, now)
+
+    return growth === 'adult' ? 0 : Math.max(1, Math.ceil((buddy.hatchedAt + (growth === 'baby' ? BABY_DAYS : YOUNG_DAYS) * GROW_DAY_MS - now) / GROW_DAY_MS))
+}
+
+export const growthLineOf = (buddy: Buddy, now: number): string => {
+    const growth = growthOf(buddy, now)
+    const days = daysToGrowOf(buddy, now)
+
+    return growth === 'baby'
+        ? t(`a baby, grows up a bit in ${days} d`, `малыш, подрастет через ${days} дн.`)
+        : growth === 'young' ? t(`still growing, all grown up in ${days} d`, `подросток, вырастет через ${days} дн.`) : ''
+}
+
 export const cardOf = (buddy: Buddy, now: number, mood: Mood | null = null): string => {
     const rarity = rarityOf(buddy.rarity)
     const species = speciesOf(buddy.species)
@@ -244,13 +275,14 @@ export const cardOf = (buddy: Buddy, now: number, mood: Mood | null = null): str
     const { level, into, need } = levelOf(buddy.xp ?? 0)
     const belly = Math.round(fullnessOf(buddy, now))
     const love = Math.round(affectionOf(buddy, now))
-    const [top = '', middle = '', bottom = ''] = portraitOf(buddy)
+    const [top = '', middle = '', bottom = ''] = portraitOf(buddy, now)
+    const growth = growthLineOf(buddy, now)
 
     const shiny = byGender(buddy.species, 'блестящий', 'блестящая')
 
     return [
         `${top}   ${buddy.name} · ${species.name} · ${stars} ${rarityWordOf(buddy.rarity, buddy.species)}${buddy.isShiny === true ? t(' · ✦ shiny, 1 in 100', ` · ✦ ${shiny}, 1 из 100`) : ''}`,
-        `${middle}   ${t('hatched', 'день рождения:')} ${dateOf(buddy.hatchedAt)}`,
+        `${middle}   ${t('hatched', 'день рождения:')} ${dateOf(buddy.hatchedAt)}${growth === '' ? '' : ` · ${growth}`}`,
         `${bottom}   ${mood === null ? '' : `${t('mood', 'настроение')}: ${vibeLabelOf(mood.vibe)} ${VIBE_MARKS[mood.vibe]} ${mood.why}`}`.trimEnd(),
         '',
         t(`level ${String(level).padEnd(4)}${meter(into, need)} ${into}/${need} xp, earned from your work`, `уровень ${String(level).padEnd(2)}${meter(into, need)} ${into}/${need} xp, за твою работу`),

@@ -1,8 +1,8 @@
-import { REPO, levelOf, rarityOf, rarityWordOf } from './buddy'
+import { REPO, growthOf, levelOf, rarityOf, rarityWordOf } from './buddy'
 import type { Buddy } from './buddy'
 import { t } from './i18n'
 import { colorsOf } from './scene'
-import { byGender, speciesOf } from './species'
+import { byGender, framesOf, speciesOf } from './species'
 import { TROPHIES, countOf, emojisOf } from './trophies'
 import type { Found } from './trophies'
 
@@ -47,9 +47,9 @@ const squareOf = (color: number): string => {
     return (hue < 15 || hue >= 345) && light <= 0.7 ? '🟥' : '🟪'
 }
 
-export const gridOf = (buddy: Buddy): string[] => {
+export const gridOf = (buddy: Buddy, now = Date.now()): string[] => {
     const colors = colorsOf(buddy.species, buddy.isShiny === true)
-    const frame = speciesOf(buddy.species).frames[0] ?? []
+    const frame = framesOf(buddy.species, growthOf(buddy, now))[0] ?? []
     const cells = frame.map(line => [...line].map(cell => (cell === '.' ? null : squareOf(colors[cell] ?? colors.b ?? 0xffffff))))
     const used = new Set(cells.flat())
     const backdrop = BACKDROPS.find(one => !used.has(one)) ?? '⬛'
