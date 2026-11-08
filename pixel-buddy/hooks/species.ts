@@ -27,20 +27,20 @@ export const SPECIES: readonly Species[] = [
         colors: { b: 0xf2a65a, s: 0xc97b35, e: EYE, c: CHEEK, m: MOUTH },
         frames: [
             [
-                '.b......b.',
-                '.bb....bb.',
-                '.bbbbbbbb.',
-                '.bebbbbeb.',
-                '.bcbmmbcb.',
-                '..ssssss..',
+                '..b.....b.',
+                '..bc...cb.',
+                's.bbbbbbb.',
+                's.bebbbeb.',
+                '.scbbmbbc.',
+                '...sbbbs..',
             ],
             [
-                '.b.......b',
-                '.bb....bb.',
-                '.bbbbbbbb.',
-                '.bebbbbeb.',
-                '.bcbmmbcb.',
-                '..ssssss..',
+                '..b.....b.',
+                '..bc...cb.',
+                '..bbbbbbb.',
+                '..bebbbeb.',
+                's.cbbmbbc.',
+                '.s.sbbbs..',
             ],
         ],
         nap: [
@@ -286,7 +286,7 @@ export type Growth = 'baby' | 'young' | 'adult'
 const LITTLE: Record<SpeciesId, Record<'baby' | 'young', readonly (readonly string[])[]>> = {
     cat: {
         baby: [['b.....b', 'bc...cb', 'bbbbbbb', 'bebbbeb', 'cbbmbbc'], ['b.....b', 'bc...cb', 'bbbbbbb', 'bebbbeb', 'cbbmbbc']],
-        young: [['b......b', 'bb....bb', 'bebbbbeb', 'bcbmmbcb', '.ssssss.'], ['b......b', 'bb....bb', 'bebbbbeb', 'bcbmmbcb', '.s.ss.s.']],
+        young: [['.b.....b', '.bc...cb', '.bbbbbbb', 'sbebbbeb', 'scbbmbbc', '..sb.bs.'], ['.b.....b', '.bc...cb', '.bbbbbbb', '.bebbbeb', 'scbbmbbc', 's.sb.bs.']],
     },
     duck: {
         baby: [['.bbbb.', 'bebbeb', 'cboobc', '.o..o.'], ['.bbbb.', 'bebbeb', 'cboobc', 'o....o']],

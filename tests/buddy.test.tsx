@@ -1422,8 +1422,8 @@ test('the share card draws the buddy in colored squares, says its rarity, level 
 
     expect(lines[0]).toBe('Mochi, my rare cat · level 2')
     expect(grid.map(row => [...row].length)).toEqual([10, 10, 10, 10, 10, 10])
-    expect(grid[3]).toBe('⬜🟧⬛🟧🟧🟧🟧⬛🟧⬜')
-    expect(grid[5]).toBe('⬜⬜🟫🟫🟫🟫🟫🟫⬜⬜')
+    expect(grid[3]).toBe('🟫⬜🟧⬛🟧🟧🟧⬛🟧⬜')
+    expect(grid[5]).toBe('⬜⬜⬜🟫🟧🟧🟧🟫⬜⬜')
     expect(lines[7]).toBe('🏆 2 of 14 trophies: 👑 🦉')
     expect(lines[8]).toBe('Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy')
     expect(shareOf({ ...NOODLE, species: 'ghost' } as Buddy, {}).split('\n')[2]).toBe('🟦🟦⬜⬜⬜⬜⬜⬜🟦🟦')
