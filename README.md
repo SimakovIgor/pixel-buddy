@@ -19,8 +19,9 @@ you are away and plays with you on clicks. Every buddy you hatch stays in your n
 
 3. Answer `y` and pick the user scope, so it hatches in every session
 
-The egg hatches in the footer right away. In the desktop app: + next to the prompt box, Plugins, Add marketplace
-`SimakovIgor/pixel-buddy`, Add plugin. Update and removal are in the plugin's [README](pixel-buddy/README.md#install).
+The egg hatches in the footer right away, and in VS Code and Cursor above the prompt. In the desktop app: + next to
+the prompt box, Plugins, Add marketplace `SimakovIgor/pixel-buddy`, Add plugin. Update and removal are in the
+plugin's [README](pixel-buddy/README.md#install).
 
 It speaks English or Russian: pick the language when you install it, or later with a right click → settings.
 
@@ -31,6 +32,11 @@ If your buddy made you smile, a ⭐ helps other people find it
 Click it to pet it, double click for its own move, click an empty spot to throw a ball:
 
 ![A click pets the cat and it purrs with hearts, a double click makes it dash, a click on an empty spot throws a ball it runs to catch](pixel-buddy/docs/play.gif)
+
+In VS Code and Cursor it sits right above the prompt and lives the same life. A click can't land on a picture there,
+so ❤️ 🍪 ⚾ `⋯` next to it pet it, hand it a berry, throw a ball and open the menu:
+
+![In VS Code the octopus sits above the prompt: the ball button throws a ball and it catches it, the cookie button gets a polite no from a full belly, the heart button makes hearts](pixel-buddy/docs/vscode.gif)
 
 A right click opens the menu with a summary line. `card` shows its card in a frame above the prompt:
 
@@ -46,17 +52,14 @@ ones behind a spoiler, are in [TROPHIES.md](TROPHIES.md) ([по-русски](TR
 
 ![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](pixel-buddy/docs/trophy-case.png)
 
-In VS Code and Cursor the buddy sits right above the prompt and lives the same life as in the terminal: it strolls,
-walks off to the right corner to think while Claude works, naps under its palm and walks over to eat what your work
-drops. The editor does not let a click land on a picture, so four small buttons sit next to it: ❤️ pets it, 🍪 hands
-it a berry, ⚾ throws a ball it runs after, `⋯` opens the same menu as a right click. `/buddy panel` puts it on the
-right:
-
-![In VS Code the octopus sits above the prompt: the ball button throws a ball and it catches it, the cookie button gets a polite no from a full belly, the heart button makes hearts](pixel-buddy/docs/vscode.gif)
-
 Eight species, and each one comes and goes in its own way:
 
 ![Cat, duck, ghost, octopus, axolotl, robot, ninja and penguin arrive and leave: running, hatching, fading, ink, bubbles, a rocket, smoke and a belly slide](pixel-buddy/docs/arrivals.gif)
+
+A new buddy hatches tiny: a baby for its first week, young until three weeks, then grown up. It tells you when it
+grows, and the little ones running next to it are its helpers, one for each subagent:
+
+![A cat, an octopus and a penguin as a baby, young and grown up](pixel-buddy/docs/growth.png)
 
 Feeding, moods, the nest, trophies, clicks, commands, what the buddy runs and sends, and troubleshooting are in the
 plugin's [README](pixel-buddy/README.md).
@@ -65,6 +68,8 @@ plugin's [README](pixel-buddy/README.md).
 
 - `pixel-buddy/`: the plugin, the folder people install
 - `tests/`: its tests, kept outside the plugin. Run them with `sh tests/run.sh`
+- `TROPHIES.md`, `TROPHIES.ru.md`: every trophy and how to earn it
+- `.claude/commands/`: checks for contributors, `/check-surfaces` for every client and `/update-docs` for these docs
 - `.claude-plugin/marketplace.json`: the marketplace `simakovigor` that lists the plugin
 
 ## License

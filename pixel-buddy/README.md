@@ -2,9 +2,9 @@
 
 **Ship code, feed your buddy.**
 
-A pixel pet for Claude Code. It hatches in the footer next to your status line, eats what your work drops, levels up,
-earns rare trophies, does tricks and tells facts while Claude thinks, naps when you are away and plays with you on
-clicks.
+A pixel pet for Claude Code. It hatches tiny in the footer next to your status line and grows up over three weeks,
+eats what your work drops, levels up, earns rare trophies, does tricks and tells facts while Claude thinks, naps when
+you are away and plays with you on clicks. In VS Code and Cursor it lives right above the prompt.
 
 ![An answer from Claude drops a cookie, the ninja walks over and eats it. A commit drops a cake and brings level 3](docs/feed.gif)
 
@@ -33,7 +33,7 @@ Sessions opened before the install get it after `/reload-plugins`.
   VS Code and Cursor. In the editor the buddy sits right above the prompt and behaves as in the terminal; clicks go
   through ❤️ 🍪 ⚾ `⋯` next to it, since the editor does not let a click land on a picture. `/buddy panel` opens it
   on the right
-- a terminal with 24-bit color. Clicks need a terminal that reports the mouse: iTerm2, Ghostty, kitty, WezTerm, Warp
+- in a terminal: 24-bit color. Clicks need a terminal that reports the mouse: iTerm2, Ghostty, kitty, WezTerm, Warp
 - 130 columns or more to sit in the footer. A narrower terminal shows the buddy above the prompt
 
 ## Meet the buddies
@@ -46,6 +46,10 @@ A buddy hatches with a name, a rarity and five stats, all rolled once:
 - **Stats:** DEBUGGING, PATIENCE, CHAOS, WISDOM and SNARK. The highest sets its personality: with CHAOS or SNARK on top
   it teases you, otherwise it cheers you on
 - **Shiny:** 1 egg in 100 hatches in other colors and twinkles
+- **Grows up:** a baby for its first week, young until three weeks, then grown up. It says so when it grows, and the
+  card tells how long is left. Buddies hatched before version 0.13 are grown up already
+
+![A cat, an octopus and a penguin as a baby, young and grown up](docs/growth.png)
 
 ## Feed it with your work
 
@@ -85,14 +89,14 @@ says what it was for.
 | Night Owl | rare | a commit between 2 and 5 at night |
 | Friday Deploy | rare | a commit on a Friday after 6 in the evening |
 | Comeback | rare | green tests soon after three failures in a row |
-| Ball Champ | rare | ten balls caught in one minute |
+| Ball Champ | rare | ten balls caught in one minute, a ninja's shurikens count too |
 | Regular | epic | a snack every day for a week |
 | All Grown Up | epic | a buddy at level 10 |
 | Shiny! | legendary | a shiny buddy in your nest |
 | Legend | legendary | a legendary buddy in your nest |
 
-Six more are secret: they show a question mark until you find them. The code is open, but finding them yourself
-is more fun.
+Six more are secret: they show a question mark until you find them. Finding them yourself is more fun, and the
+spoilers are in [TROPHIES.md](../TROPHIES.md).
 
 `trophies` in the menu or `/buddy trophies` opens your trophy case above the prompt. Each trophy is a pixel badge:
 round for rare, a hexagon for epic, a shield for legendary. In the desktop app the case shows each trophy's emoji
@@ -122,7 +126,8 @@ Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy
 - **Stays out of the way.** It sits at the right end of the footer: the spinner stays above the prompt and the footer
   keeps its height
 - **Reacts to the session.** Thinking dots while Claude works, a jolt on a failed command, dizzy after three failures
-  in a row, happy on a commit, green tests or a finished plan. A little one runs next to it for every subagent
+  in a row, happy on a commit, green tests or a finished plan. A baby of its own kind hops next to it for every
+  running subagent
 - **Does tricks while you wait,** about every half a minute, each species its own
 - **Tells facts on a long answer:** a hundred of them about space, Earth, code, math and philosophy, the first half a
   minute in, then one every two minutes while Claude works, never while you type. `facts` in the menu turns them off,
@@ -144,9 +149,12 @@ Pixel Buddy for Claude Code: github.com/SimakovIgor/pixel-buddy
 | click a snack | it hurries over and eats it |
 | right click | the menu |
 
+In VS Code and Cursor a click cannot land on a picture, so the same moves are buttons next to the buddy: ❤️ pets it,
+🍪 hands it a berry, ⚾ throws a ball, `⋯` opens the menu.
+
 ## The menu
 
-A right click opens it. Its first line sums the buddy up: name, level, belly, love and mood.
+A right click opens it, `⋯` in VS Code and Cursor. Its first line sums the buddy up: name, level, belly, love and mood.
 
 ![A right click opens the menu with the summary line, card opens the buddy's card in a frame above the prompt](docs/card.gif)
 
@@ -162,7 +170,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 
 | Command | What it does |
 | --- | --- |
-| `/buddy` | its full card in the chat, stats and personality included |
+| `/buddy` | its full card in the chat, stats and personality included. In the editor, a one line summary |
 | `/buddy trophies` | opens the trophy case |
 | `/buddy share` | the share card, copied and printed |
 | `/buddy name <name>` | rename it |
@@ -170,6 +178,8 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | `/buddy fact` | a fact right now |
 | `/buddy facts on`, `/buddy facts off` | facts while Claude works |
 | `/buddy on` | bring it back after `hide` |
+| `/buddy hatch <species>` | a new egg of that species, or calls yours back from the nest |
+| `/buddy panel` | in VS Code and Cursor, opens the buddy in a panel on the right |
 | `/buddy demo` | every reaction in 25 seconds |
 | `/buddy help` | clicks and commands |
 
@@ -180,7 +190,7 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 - **Your conversation stays out of it.** It reads no prompts, answers or thread titles. It looks at tool calls only
   to react, for example to a Bash command that runs tests, and keeps none of them
 - **What it keeps, on this machine only,** in the plugin store of Claude Code: your buddies with their stats, xp,
-  belly and love, which buddy each of your last 50 sessions shows, the trophies with their dates, how many days in a
+  belly, love and how grown up they are, which buddy each of your last 50 sessions shows, the trophies with their dates, how many days in a
   row it ate, whether facts are on and which one comes next, the theme
 - **The clipboard only when you ask:** `share` copies its card, nothing else
 - **Hooks only watch.** Every hook passes its event on unchanged: the buddy never edits your prompts, tool calls,
@@ -189,13 +199,14 @@ A right click opens it. Its first line sums the buddy up: name, level, belly, lo
 | Hook | What it does with it |
 | --- | --- |
 | `session.start` | loads your buddy, registers `/buddy`, starts the frames |
+| `session.attach` | notes that a VS Code or Cursor window is attached, so the buddy is drawn above its prompt |
 | `command.run` | answers `/buddy` only. Every other command passes by untouched |
 | `prompt.edit` | notes that you are typing, so the buddy keeps quiet. The text stays as you typed it |
 | `prompt.submit` | wakes the buddy and closes an open card. The prompt goes on unchanged |
 | `turn.start`, `turn.complete` | thinking face while Claude works, a cookie when the answer comes |
 | `tool.call` | looks at the result: a jolt on a failure, a fish for green tests, a cake for a commit or a finished plan. The call and its result go on unchanged |
 | `ui.message` | clicks and menu presses on the buddy's own strip. Messages for anything else pass by |
-| `ui.render` | draws the strip in the footer or above the prompt, next to what is already there |
+| `ui.render` | draws the strip in the footer or above the prompt, next to what is already there, and in the editor the buttons next to it |
 
 Subagents are counted from the list of running agents, without a hook on their start.
 
@@ -206,6 +217,8 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
 - `hooks/register.tsx` listens to the session, decides the mood and what to say five times a second, and draws the
   strip at the right of the footer, or above the prompt where the footer has no room
 - `hooks/band-client.tsx` animates the strip at 20 frames a second and skips frames that did not change
+- `hooks/vscode.ts` turns the same frames into pictures for VS Code and Cursor: the editor gets a new picture up to
+  ten times a second, each carrying the next 600 ms of frames, so the buddy moves as smoothly as in the terminal
 - `hooks/scene.ts` paints with half-block pixels, two per terminal cell
 - `hooks/species.ts` the sprites, `hooks/buddy.ts` stats and the card, `hooks/lines.ts` what it says,
   `hooks/trophies.ts` the trophies, `hooks/badges.ts` their pixel badges, `hooks/share.ts` the share card
@@ -226,6 +239,8 @@ The plugin is in `pixel-buddy/`, its tests in `tests/`, so installing the plugin
 - **Clicks do nothing:** the terminal does not report the mouse to Claude Code
 - **`card` shows nothing:** the panel above the prompt is folded. Click the line `▸ plugin panel hidden` right above
   the prompt to unfold it
+- **Not there in VS Code or Cursor:** update the Claude Code extension, then `/buddy debug` should say `above the
+  prompt asked on: vscode`
 - **Something looks off:** `/buddy debug` shows how it draws, the last click and menu press and the last error
 
 ## License
