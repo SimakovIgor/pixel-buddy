@@ -2173,6 +2173,47 @@ test('a buddy that grew up while you were away says so and shows its new size in
     expect(props).toContain('"growth":"young"')
 })
 
+test('in VS Code the buddy stops sending new pictures once you have been away for a while and it sleeps, and wakes on your next press', async ($, on) => {
+    const clock = mock.clock(on, { now: Date.now() })
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('env.get', () => ({ value: 'en_US.UTF-8' }))
+    on('command.register', () => ({ value: { command: 'buddy' } }))
+    on('agent.list', () => ({ value: [] }))
+    let asked = 0
+    on('ui.invalidate', () => {
+        asked += 1
+
+        return { value: undefined }
+    })
+    on('ui.render', ($, e) => {
+        const { Text } = $.ui.resolve(e)
+
+        return <Text>others</Text>
+    })
+    storeOn(on, { buddy: { ...NOODLE, species: 'octopus', belly: { value: 80, at: clock.now() }, affection: { value: 80, at: clock.now() } } })
+    const wait = async (ms: number) => {
+        for (let spent = 0; spent < ms; spent += 500) {
+            await clock.advance(500)
+            await above.redraw()
+        }
+    }
+
+    await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+    const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
+    await wait(4 * 60000)
+    const beforeQuiet = asked
+    await wait(20000)
+    const whileAway = asked - beforeQuiet
+    await above.press({ key: 'editor-heart' })
+    const beforeBack = asked
+    await wait(5000)
+    const afterBack = asked - beforeBack
+    await above.unmount()
+
+    expect(whileAway).toBeLessThanOrEqual(2)
+    expect(afterBack).toBeGreaterThan(5)
+})
+
 test('in VS Code the ball button throws a ball, the buddy runs after it and catches it, the way a click does in the terminal', async ($, on) => {
     const clock = mock.clock(on, { now: Date.now() })
     on('session.start', (_, e) => ({ cwd: e.cwd }))

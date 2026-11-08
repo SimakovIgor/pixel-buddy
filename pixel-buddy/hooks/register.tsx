@@ -734,6 +734,7 @@ const EDITOR_FRESH_MS = 30000
 const EDITOR_AHEAD_FRAMES = 12
 const EDITOR_STEP_MS = 50
 const EDITOR_TICK_MS = 100
+const EDITOR_AWAY_MS = SLEEP_AFTER_MS + 15000
 const GLANCE_SLOT_MS = 6500
 const GLANCE_MS = 1200
 const HOP_MS = 200
@@ -924,6 +925,8 @@ const isEditorFrameStale = (now: number): boolean => {
     return cells !== editorShot.cells && !sameCells(cells, editorShot.cells)
 }
 
+const isAwayFromEditor = (now: number): boolean => turnAt === null && now - Math.max(lastSeenAt, typingAt) > EDITOR_AWAY_MS
+
 const watchEditorFrames = ($: EngineInterface, now: number): void => {
     if (now - stageDrawnAt >= EDITOR_FRESH_MS) {
         editorTimer?.cancel()
@@ -940,7 +943,7 @@ const watchEditorFrames = ($: EngineInterface, now: number): void => {
         }
         settleFood($, at)
         settleToy($, at)
-        if (isEditorFrameStale(at)) {
+        if (!isAwayFromEditor(at) && isEditorFrameStale(at)) {
             $.ui.invalidate('ui.render')
         }
     }).catch((error: unknown) => {
