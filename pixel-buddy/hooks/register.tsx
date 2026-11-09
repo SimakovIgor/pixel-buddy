@@ -115,7 +115,7 @@ let clientRestarts = 0
 let clientHeardFrame: number | null = null
 let stageDrawnAt = 0
 let lastStageKey = ''
-let editorShot: { cols: number; cells: Uint32Array; film: readonly Uint32Array[]; svg: string; isNapLoop: boolean } | null = null
+let editorShot: { cols: number; cells: Uint32Array; film: readonly Uint32Array[]; svg: string; isAway: boolean; start: number } | null = null
 let editorTimer: Timer | null = null
 let wanderPlan: Plan | null = null
 let anchorX = 4
@@ -736,8 +736,7 @@ const EDITOR_AHEAD_FRAMES = 12
 const EDITOR_STEP_MS = 50
 const EDITOR_TICK_MS = 100
 const EDITOR_AWAY_MS = SLEEP_AFTER_MS + 15000
-const NAP_LOOP_MS = 8400
-const NAP_STEP_MS = 350
+const EDITOR_REFILL_FRAMES = 4
 const GLANCE_SLOT_MS = 6500
 const GLANCE_MS = 1200
 const HOP_MS = 200
@@ -910,21 +909,19 @@ const editorPictureOf = (now: number, cols: number): string => {
     serveFood(now, cols)
     const start = gridOf(now)
     if (isAwayFromEditor(now)) {
-        const loopStart = Math.floor(now / NAP_LOOP_MS) * NAP_LOOP_MS
-        const loop = Array.from({ length: NAP_LOOP_MS / NAP_STEP_MS }, (_, i) => editorFrameAt(now, cols, loopStart + i * NAP_STEP_MS))
-        const isSameLoop = editorShot !== null && editorShot.isNapLoop && editorShot.cols === cols && editorShot.film.length === loop.length && loop.every((one, i) => sameCells(one, editorShot?.film[i] ?? new Uint32Array(0)))
-        if (editorShot === null || !isSameLoop) {
-            editorShot = { cols, cells: loop[0] ?? new Uint32Array(0), film: loop, svg: filmSvgOf(loop, NAP_STEP_MS, cols, ROWS, EDITOR_PX, true), isNapLoop: true }
+        if (editorShot?.isAway !== true || editorShot.cols !== cols) {
+            const still = editorFrameAt(now, cols, start)
+            editorShot = { cols, cells: still, film: [still], svg: cellsSvgOf(still, cols, ROWS, EDITOR_PX), isAway: true, start }
         }
 
         return editorShot.svg
     }
+    if (editorShot !== null && editorShot.cols === cols && !isEditorFrameStale(now)) {
+        return editorShot.svg
+    }
     const film = Array.from({ length: EDITOR_AHEAD_FRAMES }, (_, i) => editorFrameAt(now, cols, start + i * EDITOR_STEP_MS))
     const [cells = new Uint32Array(0)] = film
-    const isSameFilm = editorShot !== null && !editorShot.isNapLoop && editorShot.cols === cols && editorShot.film.length === film.length && film.every((one, i) => sameCells(one, editorShot?.film[i] ?? new Uint32Array(0)))
-    if (editorShot === null || !isSameFilm) {
-        editorShot = { cols, cells, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), isNapLoop: false }
-    }
+    editorShot = { cols, cells, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), isAway: false, start }
 
     return editorShot.svg
 }
@@ -933,9 +930,14 @@ const isEditorFrameStale = (now: number): boolean => {
     if (editorShot === null || buddy === null || !isShown(now)) {
         return false
     }
+    const index = (gridOf(now) - editorShot.start) / EDITOR_STEP_MS
+    const planned = editorShot.film[index]
+    if (editorShot.isAway || planned === undefined || index >= editorShot.film.length - EDITOR_REFILL_FRAMES) {
+        return true
+    }
     const cells = editorFrameAt(now, editorShot.cols, gridOf(now))
 
-    return cells !== editorShot.cells && !sameCells(cells, editorShot.cells)
+    return cells !== planned && !sameCells(cells, planned)
 }
 
 const isAwayFromEditor = (now: number): boolean => turnAt === null && now - Math.max(lastSeenAt, typingAt) > EDITOR_AWAY_MS
@@ -956,7 +958,7 @@ const watchEditorFrames = ($: EngineInterface, now: number): void => {
         }
         settleFood($, at)
         settleToy($, at)
-        if (isAwayFromEditor(at) ? editorShot?.isNapLoop === false : isEditorFrameStale(at)) {
+        if (isAwayFromEditor(at) ? editorShot?.isAway === false : isEditorFrameStale(at)) {
             $.ui.invalidate('ui.render')
         }
     }).catch((error: unknown) => {
@@ -2034,7 +2036,7 @@ export const register: Register = (on, options) => {
     on('prompt.edit', ($, e, next) => {
         void $.clock.now().then(now => {
             typingAt = now
-            if (editorShot?.isNapLoop === true) {
+            if (editorShot?.isAway === true) {
                 $.ui.invalidate('ui.render')
             }
         })
@@ -2228,7 +2230,7 @@ export const register: Register = (on, options) => {
         aboveSurfaces.add(e.surface)
         if (e.surface === 'vscode') {
             const theirs = await next(e)
-            const stage = drawEditor($, e, now, e.props.bodyColumns)
+            const stage = drawEditor($, e, await $.clock.now(), e.props.bodyColumns)
             const { Box } = $.ui.resolve(e)
 
             return stage === null ? theirs : <Box key="buddy-above" flexDirection="column">{theirs}{stage}</Box>

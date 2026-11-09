@@ -217,11 +217,12 @@ Pixel Buddy is a Claude Code [mod](https://code.claude.com/docs/en/plugins/mods/
 - `hooks/register.tsx` listens to the session, decides the mood and what to say five times a second, and draws the
   strip at the right of the footer, or above the prompt where the footer has no room
 - `hooks/band-client.tsx` animates the strip at 20 frames a second and skips frames that did not change
-- `hooks/vscode.ts` turns the same frames into pictures for VS Code and Cursor: the editor gets a new picture up to
-  ten times a second, each carrying the next 600 ms of frames, so the buddy moves as smoothly as in the terminal.
+- `hooks/vscode.ts` turns the same frames into pictures for VS Code and Cursor: each picture carries the next 600 ms
+  of frames and a new one goes out as it runs out or the scene changes, so the buddy moves as smoothly as in the
+  terminal.
   Its words take the editor's text color and pale pixels get a faint outline, so it reads on light and dark themes.
-  A few minutes after you leave it sends one looping picture of the buddy asleep and nothing more, so an editor
-  left in the background keeps it drawn
+  A few minutes after you leave it falls asleep in one picture that does not change until you are back, so an
+  editor left in the background has nothing new to draw
 - `hooks/scene.ts` paints with half-block pixels, two per terminal cell
 - `hooks/species.ts` the sprites, `hooks/buddy.ts` stats and the card, `hooks/lines.ts` what it says,
   `hooks/trophies.ts` the trophies, `hooks/badges.ts` their pixel badges, `hooks/share.ts` the share card

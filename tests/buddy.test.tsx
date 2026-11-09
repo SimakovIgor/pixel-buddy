@@ -1894,7 +1894,7 @@ test('in VS Code the buddy sits above the prompt next to ❤️ 🍪 ✦ ⋯, /b
     expect(drawn).not.toContain('"settings"')
 })
 
-test('in VS Code the buddy is drawn frame by frame from the terminal scene with 600 ms of frames ahead, redrawn as it breathes and walks, the same moment twice gives the same picture', async ($, on) => {
+test('in VS Code the buddy is drawn frame by frame from the terminal scene with 600 ms of frames ahead, a new film only as the playing one runs out, the same moment twice gives the same picture', async ($, on) => {
     const clock = mock.clock(on, { now: Date.UTC(2026, 4, 12, 7, 0, 0) })
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('env.get', () => ({ value: 'ru_RU.UTF-8' }))
@@ -1933,8 +1933,9 @@ test('in VS Code the buddy is drawn frame by frame from the terminal scene with 
     expect(again).toBe(first)
     expect([...seen].filter(picture => picture.includes('@keyframes s4'))).not.toHaveLength(0)
     expect(new Set([...seen].map(picture => Math.min(...spansOf(JSON.parse(`"${picture}"`) as string, '#2b2d42').map(span => span.x)))).size).toBeGreaterThan(3)
-    expect(seen.size).toBeGreaterThan(40)
-    expect(askedWhileAlive).toBeGreaterThan(20)
+    expect(seen.size).toBeGreaterThan(15)
+    expect(seen.size).toBeLessThan(35)
+    expect(askedWhileAlive).toBeGreaterThan(12)
 })
 
 test('in VS Code, while Claude works, the buddy walks to the right corner and thinks there, as in the terminal', async ($, on) => {
@@ -2225,7 +2226,7 @@ test('in VS Code the buddy greets you back in a bubble written in the editor the
     expect(drawn).toContain('fill=\\"currentColor\\"')
 })
 
-test('in VS Code the buddy stops sending new pictures once you have been away for a while and sleeps in one looping picture that keeps the editor drawing it, and wakes on your next press', async ($, on) => {
+test('in VS Code the buddy sleeps in one picture that never changes while you are away, so a window in the background has nothing new to draw, and wakes on your next press', async ($, on) => {
     const clock = mock.clock(on, { now: Date.now() })
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('env.get', () => ({ value: 'en_US.UTF-8' }))
@@ -2254,7 +2255,12 @@ test('in VS Code the buddy stops sending new pictures once you have been away fo
     const above = await $.ui.mount({ ...ABOVE, surface: 'vscode', props: { ...ABOVE.props, bodyColumns: 50 } })
     await wait(4 * 60000)
     const beforeQuiet = asked
-    await wait(20000)
+    const awayPictures = new Set<string>()
+    for (let spent = 0; spent < 20000; spent += 500) {
+        await clock.advance(500)
+        await above.redraw()
+        awayPictures.add(JSON.stringify(await above.drawn()))
+    }
     const whileAway = asked - beforeQuiet
     const awayPicture = JSON.stringify(await above.drawn())
     await above.press({ key: 'editor-heart' })
@@ -2265,7 +2271,8 @@ test('in VS Code the buddy stops sending new pictures once you have been away fo
 
     expect(whileAway).toBeLessThanOrEqual(2)
     expect(awayPicture).toContain('</svg>')
-    expect(awayPicture).toContain('step-end infinite')
+    expect(awayPicture).not.toContain('animation')
+    expect(awayPictures.size).toBe(1)
     expect(afterBack).toBeGreaterThan(5)
 })
 
