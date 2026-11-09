@@ -2225,7 +2225,7 @@ test('in VS Code the buddy greets you back in a bubble written in the editor the
     expect(drawn).toContain('fill=\\"currentColor\\"')
 })
 
-test('in VS Code the buddy stops sending new pictures once you have been away for a while and it sleeps, and wakes on your next press', async ($, on) => {
+test('in VS Code the buddy stops sending new pictures once you have been away for a while and sleeps in one looping picture that keeps the editor drawing it, and wakes on your next press', async ($, on) => {
     const clock = mock.clock(on, { now: Date.now() })
     on('session.start', (_, e) => ({ cwd: e.cwd }))
     on('env.get', () => ({ value: 'en_US.UTF-8' }))
@@ -2265,7 +2265,7 @@ test('in VS Code the buddy stops sending new pictures once you have been away fo
 
     expect(whileAway).toBeLessThanOrEqual(2)
     expect(awayPicture).toContain('</svg>')
-    expect(awayPicture).not.toContain('animation')
+    expect(awayPicture).toContain('step-end infinite')
     expect(afterBack).toBeGreaterThan(5)
 })
 
