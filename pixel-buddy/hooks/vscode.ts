@@ -92,7 +92,7 @@ export const frameSvgOf = (cells: Uint32Array, cols: number, rows: number, px: n
 
 const pct = (n: number): string => `${Number(n.toFixed(3))}%`
 
-export const filmSvgOf = (frames: readonly Uint32Array[], frameMs: number, cols: number, rows: number, px: number): string => {
+export const filmSvgOf = (frames: readonly Uint32Array[], frameMs: number, cols: number, rows: number, px: number, isLoop = false): string => {
     const shots: Array<{ cells: Uint32Array; start: number; end: number }> = []
     frames.forEach((cells, i) => {
         const last = shots[shots.length - 1]
@@ -116,7 +116,7 @@ export const filmSvgOf = (frames: readonly Uint32Array[], frameMs: number, cols:
             isLast ? '' : `${pct((shot.end / total) * 100)} { opacity: 0; }`,
             `100% { opacity: ${isLast ? 1 : 0}; }`,
         ].filter(step => step !== '').join(' ')
-        styles.push(`.s${k} { opacity: 0; animation: s${k} ${total}ms step-end 1 forwards; } @keyframes s${k} { ${steps} }`)
+        styles.push(`.s${k} { opacity: 0; animation: s${k} ${total}ms step-end ${isLoop ? 'infinite' : '1 forwards'}; } @keyframes s${k} { ${steps} }`)
 
         return `<g class="s${k}">${frameSvgOf(shot.cells, cols, rows, px)}</g>`
     })

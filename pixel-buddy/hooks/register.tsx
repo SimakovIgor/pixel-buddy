@@ -115,7 +115,9 @@ let clientRestarts = 0
 let clientHeardFrame: number | null = null
 let stageDrawnAt = 0
 let lastStageKey = ''
-let editorShot: { cols: number; film: readonly Uint32Array[]; svg: string; isAway: boolean; start: number } | null = null
+type AwayPhase = 'drowse' | 'sleep'
+
+let editorShot: { cols: number; film: readonly Uint32Array[]; svg: string; away: AwayPhase | null; start: number } | null = null
 let editorTimer: Timer | null = null
 let wanderPlan: Plan | null = null
 let anchorX = 4
@@ -732,11 +734,14 @@ const BALL_FAR = 6
 const SPARK_KEEP_MS = 1500
 const BALL_FLY_MS = 350
 const EDITOR_FRESH_MS = 30000
-const EDITOR_AHEAD_FRAMES = 12
+const EDITOR_AHEAD_FRAMES = 20
 const EDITOR_STEP_MS = 50
 const EDITOR_TICK_MS = 100
 const EDITOR_AWAY_MS = SLEEP_AFTER_MS + 15000
-const EDITOR_REFILL_FRAMES = 4
+const EDITOR_REFILL_FRAMES = 10
+const EDITOR_DROWSE_MS = 300000
+const NAP_LOOP_MS = 8400
+const NAP_STEP_MS = 350
 const GLANCE_SLOT_MS = 6500
 const GLANCE_MS = 1200
 const HOP_MS = 200
@@ -908,10 +913,10 @@ const editorFrameAt = (now: number, cols: number, at: number): Uint32Array => {
 const editorPictureOf = (now: number, cols: number): string => {
     serveFood(now, cols)
     const start = gridOf(now)
-    if (isAwayFromEditor(now)) {
-        if (editorShot?.isAway !== true || editorShot.cols !== cols) {
-            const still = editorFrameAt(now, cols, start)
-            editorShot = { cols, film: [still], svg: cellsSvgOf(still, cols, ROWS, EDITOR_PX), isAway: true, start }
+    const away = awayPhaseOf(now)
+    if (away !== null) {
+        if (editorShot?.away !== away || editorShot.cols !== cols) {
+            editorShot = away === 'drowse' ? drowseShotOf(now, cols) : sleepShotOf(now, cols, start)
         }
 
         return editorShot.svg
@@ -920,7 +925,7 @@ const editorPictureOf = (now: number, cols: number): string => {
         return editorShot.svg
     }
     const film = Array.from({ length: EDITOR_AHEAD_FRAMES }, (_, i) => editorFrameAt(now, cols, start + i * EDITOR_STEP_MS))
-    editorShot = { cols, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), isAway: false, start }
+    editorShot = { cols, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), away: null, start }
 
     return editorShot.svg
 }
@@ -931,7 +936,7 @@ const isEditorFrameStale = (now: number): boolean => {
     }
     const index = (gridOf(now) - editorShot.start) / EDITOR_STEP_MS
     const planned = editorShot.film[index]
-    if (editorShot.isAway || planned === undefined || index >= editorShot.film.length - EDITOR_REFILL_FRAMES) {
+    if (editorShot.away !== null || planned === undefined || index >= editorShot.film.length - EDITOR_REFILL_FRAMES) {
         return true
     }
     const cells = editorFrameAt(now, editorShot.cols, gridOf(now))
@@ -940,6 +945,27 @@ const isEditorFrameStale = (now: number): boolean => {
 }
 
 const isAwayFromEditor = (now: number): boolean => turnAt === null && now - Math.max(lastSeenAt, typingAt) > EDITOR_AWAY_MS
+
+const awayPhaseOf = (now: number): AwayPhase | null => {
+    if (!isAwayFromEditor(now)) {
+        return null
+    }
+
+    return now - Math.max(lastSeenAt, typingAt) - EDITOR_AWAY_MS < EDITOR_DROWSE_MS ? 'drowse' : 'sleep'
+}
+
+const drowseShotOf = (now: number, cols: number): NonNullable<typeof editorShot> => {
+    const start = Math.floor(now / NAP_LOOP_MS) * NAP_LOOP_MS
+    const film = Array.from({ length: NAP_LOOP_MS / NAP_STEP_MS }, (_, i) => editorFrameAt(now, cols, start + i * NAP_STEP_MS))
+
+    return { cols, film, svg: filmSvgOf(film, NAP_STEP_MS, cols, ROWS, EDITOR_PX, true), away: 'drowse', start }
+}
+
+const sleepShotOf = (now: number, cols: number, start: number): NonNullable<typeof editorShot> => {
+    const still = editorFrameAt(now, cols, start)
+
+    return { cols, film: [still], svg: cellsSvgOf(still, cols, ROWS, EDITOR_PX), away: 'sleep', start }
+}
 
 const watchEditorFrames = ($: EngineInterface, now: number): void => {
     if (now - stageDrawnAt >= EDITOR_FRESH_MS) {
@@ -957,7 +983,7 @@ const watchEditorFrames = ($: EngineInterface, now: number): void => {
         }
         settleFood($, at)
         settleToy($, at)
-        if (isAwayFromEditor(at) ? editorShot?.isAway === false : isEditorFrameStale(at)) {
+        if (isAwayFromEditor(at) ? editorShot?.away !== awayPhaseOf(at) : isEditorFrameStale(at)) {
             $.ui.invalidate('ui.render')
         }
     }).catch((error: unknown) => {
@@ -984,6 +1010,7 @@ const editorKeyOf = (now: number): string => JSON.stringify([
     buddy === null ? '' : headerOf(buddy, now, feelingOf(now)),
     editorToy?.at ?? 0,
     isRu(),
+    awayPhaseOf(now),
 ])
 
 const ate = ($: EngineInterface, at: unknown, isHanded: boolean, now: number): void => {
@@ -2035,7 +2062,7 @@ export const register: Register = (on, options) => {
     on('prompt.edit', ($, e, next) => {
         void $.clock.now().then(now => {
             typingAt = now
-            if (editorShot?.isAway === true) {
+            if (editorShot !== null && editorShot.away !== null) {
                 $.ui.invalidate('ui.render')
             }
         })
