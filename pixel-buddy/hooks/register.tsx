@@ -115,7 +115,7 @@ let clientRestarts = 0
 let clientHeardFrame: number | null = null
 let stageDrawnAt = 0
 let lastStageKey = ''
-let editorShot: { cols: number; cells: Uint32Array; film: readonly Uint32Array[]; svg: string; isAway: boolean; start: number } | null = null
+let editorShot: { cols: number; film: readonly Uint32Array[]; svg: string; isAway: boolean; start: number } | null = null
 let editorTimer: Timer | null = null
 let wanderPlan: Plan | null = null
 let anchorX = 4
@@ -911,7 +911,7 @@ const editorPictureOf = (now: number, cols: number): string => {
     if (isAwayFromEditor(now)) {
         if (editorShot?.isAway !== true || editorShot.cols !== cols) {
             const still = editorFrameAt(now, cols, start)
-            editorShot = { cols, cells: still, film: [still], svg: cellsSvgOf(still, cols, ROWS, EDITOR_PX), isAway: true, start }
+            editorShot = { cols, film: [still], svg: cellsSvgOf(still, cols, ROWS, EDITOR_PX), isAway: true, start }
         }
 
         return editorShot.svg
@@ -920,8 +920,7 @@ const editorPictureOf = (now: number, cols: number): string => {
         return editorShot.svg
     }
     const film = Array.from({ length: EDITOR_AHEAD_FRAMES }, (_, i) => editorFrameAt(now, cols, start + i * EDITOR_STEP_MS))
-    const [cells = new Uint32Array(0)] = film
-    editorShot = { cols, cells, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), isAway: false, start }
+    editorShot = { cols, film, svg: filmSvgOf(film, EDITOR_STEP_MS, cols, ROWS, EDITOR_PX), isAway: false, start }
 
     return editorShot.svg
 }
