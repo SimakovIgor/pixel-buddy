@@ -14,9 +14,9 @@ import type { ActionKind, FoodView, Menu, MenuItem, Mood, Pose, Season, View } f
 import { SPECIES, SPRITE_W, byGender, speciesOf } from './species'
 import type { SpeciesId } from './species'
 import { BALLS, BALL_WINDOW_MS, COMEBACK_MS, DEEP_THOUGHT, DUCK_MS, GROWN_LEVEL, HIVE, REGULAR_DAYS, TROPHIES, commitTrophiesAt, countOf, dayKeyOf, emojisOf, foundOf, nextTally, ownedTrophiesOf, tallyOf, textOf, toastOf, trophyOf } from './trophies'
-import type { Found, TrophyId } from './trophies'
+import type { Found, Trophy, TrophyId } from './trophies'
 import { shareOf } from './share'
-import { trophyCaseOf } from './badges'
+import { BADGE, BADGE_GAP, badgeOf, badgesPerRowOf, trophyCaseOf } from './badges'
 import { cellsSvgOf, filmSvgOf } from './vscode'
 
 const CLIENT_KEY = 'buddy-band'
@@ -618,21 +618,90 @@ const CASE_GOLD = 0xffcf3f
 
 const CASE_CELL = 16
 
-const badgeTextOf = ($: EngineInterface, e: ResolveInput, width: number): RenderElement => {
+const CASE_DIM = '#6c6880'
+
+const scopeOf = (id: TrophyId): string => `pixel-buddy-trophy-${id}`
+
+const dayOf = (at: number): string => {
+    const day = new Date(at)
+
+    return t(day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), `${String(day.getDate()).padStart(2, '0')}.${String(day.getMonth() + 1).padStart(2, '0')}`)
+}
+
+const captionOf = (one: Trophy): { name: string; color: string | undefined; rest: string } => {
+    const at = found[one.id]
+    const text = textOf(one)
+    if (at !== undefined) {
+        return { name: text.name, color: hexOf(rarityOf(one.rarity).color), rest: t(`: for ${text.hint} · got ${dayOf(at)}`, `: за ${text.hint} · получен ${dayOf(at)}`) }
+    }
+    if (one.isSecret) {
+        return { name: '???', color: CASE_DIM, rest: t(': a secret one, it opens when it happens', ': секретный, откроется, когда случится') }
+    }
+
+    return { name: text.name, color: undefined, rest: t(`: for ${text.hint}`, `: за ${text.hint}`) }
+}
+
+const captionRowOf = ($: EngineInterface, e: ResolveInput, width: number): RenderElement => {
     const { Box, Text } = $.ui.resolve(e)
-    const perRow = Math.max(2, Math.min(7, Math.floor((width - 4) / CASE_CELL)))
-    const rows = Array.from({ length: Math.ceil(TROPHIES.length / perRow) }, (_, i) => TROPHIES.slice(i * perRow, (i + 1) * perRow))
+
+    return (
+        <Box flexDirection="row" height={1} width={width}>
+            <Text> </Text>
+            {TROPHIES.map(one => {
+                const caption = captionOf(one)
+
+                return (
+                    <Box key={`trophy-caption-${one.id}`} position="absolute" top={0} left={0} width={width} display="none" hover={{ scope: scopeOf(one.id), display: 'flex' }}>
+                        <Text wrap="truncate-end">
+                            <Text color={caption.color} weight="bold">{caption.name}</Text>
+                            {caption.rest}
+                        </Text>
+                    </Box>
+                )
+            })}
+        </Box>
+    )
+}
+
+const trophyRowsOf = (perRow: number): Trophy[][] => Array.from({ length: Math.ceil(TROPHIES.length / perRow) }, (_, i) => TROPHIES.slice(i * perRow, (i + 1) * perRow))
+
+const badgeRasterOf = ($: EngineInterface, e: ResolveInput, perRow: number): RenderElement => {
+    const ui = $.ui.resolve(e)
+    const { Box } = ui
 
     return (
         <Box key="trophy-badges" flexDirection="column">
-            {rows.map((row, r) => (
+            {trophyRowsOf(perRow).map((row, r) => (
+                <Box key={`trophy-row-${r}`} flexDirection="row" marginTop={r === 0 ? 0 : 1}>
+                    {row.map((one, i) => {
+                        const badge = badgeOf(one, found[one.id] !== undefined)
+
+                        return (
+                            <Box key={`trophy-${one.id}`} marginLeft={i === 0 ? 0 : BADGE_GAP} hover={{ scope: scopeOf(one.id) }}>
+                                {'Raster' in ui ? ui.Raster({ key: `trophy-badge-${one.id}`, columns: badge.columns, rows: badge.rows, cells: encode(badge.cells) }) : null}
+                            </Box>
+                        )
+                    })}
+                </Box>
+            ))}
+        </Box>
+    )
+}
+
+const badgeTextOf = ($: EngineInterface, e: ResolveInput, width: number): RenderElement => {
+    const { Box, Text } = $.ui.resolve(e)
+    const perRow = Math.max(2, Math.min(7, Math.floor((width - 4) / CASE_CELL)))
+
+    return (
+        <Box key="trophy-badges" flexDirection="column">
+            {trophyRowsOf(perRow).map((row, r) => (
                 <Box key={`row-${r}`} flexDirection="row">
                     {row.map(one => {
                         if (found[one.id] !== undefined) {
-                            return <Box key={one.id} width={CASE_CELL}><Text color={hexOf(rarityOf(one.rarity).color)}>{one.emoji} {textOf(one).label}</Text></Box>
+                            return <Box key={one.id} width={CASE_CELL} hover={{ scope: scopeOf(one.id) }}><Text color={hexOf(rarityOf(one.rarity).color)}>{one.emoji} {textOf(one).label}</Text></Box>
                         }
 
-                        return <Box key={one.id} width={CASE_CELL}><Text dimColor>{one.isSecret ? '?  ???' : `○  ${textOf(one).label}`}</Text></Box>
+                        return <Box key={one.id} width={CASE_CELL} hover={{ scope: scopeOf(one.id) }}><Text dimColor>{one.isSecret ? '?  ???' : `○  ${textOf(one).label}`}</Text></Box>
                     })}
                 </Box>
             ))}
@@ -646,24 +715,28 @@ const drawCase = ($: EngineInterface, e: ResolveInput, now: number, width: numbe
     }
     const { Box, Text } = $.ui.resolve(e)
     const room = Math.min(width, 92)
-    const shown = e.surface === 'terminal' || e.surface === 'vscode' ? trophyCaseOf(found, room - 4) : null
+    const perRow = badgesPerRowOf(room - 4)
+    const columns = perRow * (BADGE + BADGE_GAP) - BADGE_GAP
+    const isHoverable = e.surface === 'terminal' || e.surface === 'desktop'
+    const shown = e.surface === 'vscode' ? trophyCaseOf(found, room - 4) : null
     const latest = TROPHIES.filter(one => found[one.id] !== undefined).sort((a, b) => (found[b.id] ?? 0) - (found[a.id] ?? 0))[0]
-    const badges = e.surface === 'terminal' && shown !== null
-        ? $.ui.resolve(e).Raster({ key: 'trophy-badges', columns: shown.columns, rows: shown.rows, cells: encode(shown.cells) })
-        : e.surface === 'vscode' && shown !== null
+    const badges = e.surface === 'terminal'
+        ? badgeRasterOf($, e, perRow)
+        : shown !== null
             ? $.ui.resolve(e).Svg({ source: cellsSvgOf(shown.cells, shown.columns, shown.rows, 5), alt: t(`${countOf(found)} of ${TROPHIES.length} trophies`, `${countOf(found)} из ${TROPHIES.length} трофеев`), width: shown.columns * 5, height: shown.rows * 10 })
             : badgeTextOf($, e, room)
 
     return (
-        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={shown === null || e.surface === 'vscode' ? room : shown.columns + 4}>
+        <Box key="trophy-case" flexDirection="column" borderStyle="round" borderColor={hexOf(CASE_GOLD)} paddingX={1} width={e.surface === 'terminal' ? columns + 4 : room}>
             <Box flexDirection="row">
                 <Text color={hexOf(CASE_GOLD)} weight="bold">{t('trophies ', 'трофеи ')}</Text>
                 <Text>{t(`${countOf(found)} of ${TROPHIES.length}`, `${countOf(found)} из ${TROPHIES.length}`)}</Text>
                 <Text dimColor>
                     {latest === undefined ? t(' · rare moments of your work earn them', ' · их дают редкие моменты твоей работы') : t(` · the latest: ${latest.name}`, ` · последний: ${textOf(latest).name}`)}
-                    {t(' · menu → share shows them off', ' · меню → поделиться покажет их')}
+                    {isHoverable ? t(' · hover one to see what it is for', ' · наведи на трофей, узнаешь за что') : t(' · menu → share shows them off', ' · меню → поделиться покажет их')}
                 </Text>
             </Box>
+            {isHoverable ? captionRowOf($, e, e.surface === 'terminal' ? columns : room - 4) : null}
             {badges}
         </Box>
     )

@@ -1517,7 +1517,7 @@ test('/buddy trophies and trophies in the menu open the case above the prompt, a
     const menu = JSON.stringify(await ui.find({ type: 'Client', key: 'buddy-band' }))
     await ui.post({ type: 'menu', key: 'trophies' }, { in: 'buddy-band' })
     await above.redraw()
-    const fromMenu = await above.find({ type: 'Raster', key: 'trophy-badges' })
+    const fromMenu = await above.find({ type: 'Raster', key: 'trophy-badge-night-owl' })
     await ui.unmount()
     await above.unmount()
 
@@ -1527,6 +1527,38 @@ test('/buddy trophies and trophies in the menu open the case above the prompt, a
     expect(menu).toContain('"label":"trophies"')
     expect(fromMenu).toBeTruthy()
     expect(toasts[0]).toBe('Trophy case opened above the prompt. Don\'t see it? Click the "▸ plugin panel hidden" line right above the prompt')
+})
+
+test('in the terminal hovering a trophy shows what it is for under the header: found ones with the day, open ones with the condition, secret ones stay secret', async ($, on) => {
+    stubEngine(on)
+    storeOn(on, { buddy: { ...NOODLE }, trophies: { 'night-owl': new Date(2026, 10, 5, 12).getTime() } })
+    on('ui.invalidate', () => ({ value: undefined }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    const above = await $.ui.mount(ABOVE)
+    await $.command.run({ command: 'buddy', args: 'trophies' } as Parameters<typeof $.command.run>[0])
+    await above.redraw()
+    const badge = JSON.stringify(await above.find({ key: 'trophy-night-owl' }) ?? null)
+    const owl = JSON.stringify(await above.find({ key: 'trophy-caption-night-owl' }) ?? null)
+    const friday = JSON.stringify(await above.find({ key: 'trophy-caption-friday' }) ?? null)
+    const leet = JSON.stringify(await above.find({ key: 'trophy-caption-leet' }) ?? null)
+    const header = JSON.stringify(await above.find({ key: 'trophy-case' }) ?? null)
+    const drawn = JSON.stringify(await above.drawn())
+    const scopes = [...drawn.matchAll(/"scope":"pixel-buddy-trophy-night-owl"/g)].length
+    await above.unmount()
+
+    expect(badge).toContain('"type":"Raster"')
+    expect(scopes).toBe(2)
+    expect(drawn).toContain('"hover":{"scope":"pixel-buddy-trophy-night-owl","display":"flex"}')
+    expect(owl).toContain('"display":"none"')
+    expect(owl).toContain('Night Owl')
+    expect(owl).toContain(': for a commit between 2 and 5 at night · got Nov 5')
+    expect(friday).toContain('Friday Deploy')
+    expect(friday).toContain(': for a commit on a Friday after 6 in the evening')
+    expect(friday).not.toContain('got')
+    expect(leet).toContain(': a secret one, it opens when it happens')
+    expect(leet).not.toContain('13:37')
+    expect(header).toContain('hover one to see what it is for')
 })
 
 test('on the desktop the trophy case is a grid of emoji and names, found ones in color, open ones gray, secret ones a question mark', async ($, on) => {

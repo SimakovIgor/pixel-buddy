@@ -100,7 +100,8 @@ spoilers are in [TROPHIES.md](../TROPHIES.md).
 
 `trophies` in the menu or `/buddy trophies` opens your trophy case above the prompt. Each trophy is a pixel badge:
 round for rare, a hexagon for epic, a shield for legendary. In the desktop app the case shows each trophy's emoji
-instead.
+instead. In the terminal and the desktop app, hover a trophy to see what it is for and the day you got it. A secret
+one says only that it opens when it happens. In VS Code and Cursor the case is one picture, so hovering shows nothing
 
 ![The trophy case: pixel badges, round for rare, hexagon for epic, a shield for legendary. Found ones in color, open ones gray, secret ones a question mark](docs/trophy-case.png)
 

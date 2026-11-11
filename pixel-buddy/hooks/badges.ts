@@ -125,20 +125,32 @@ const drawBadge = (c: Canvas, trophy: Trophy, isFound: boolean, x0: number, y0: 
 
 export type TrophyCase = { cells: Uint32Array; columns: number; rows: number }
 
+export const BADGE_GAP = GAP
+
+export const BADGE_ROWS = LINE_ROWS - 1
+
+export const badgesPerRowOf = (width: number): number => Math.max(MIN_PER_ROW, Math.min(MAX_PER_ROW, Math.floor((width + GAP) / (BADGE + GAP))))
+
+const drawBadgeWithLabel = (c: Canvas, trophy: Trophy, isFound: boolean, x0: number, row0: number): void => {
+    drawBadge(c, trophy, isFound, x0, row0 * 2)
+    const label = isFound || !trophy.isSecret ? textOf(trophy).label : '???'
+    write(c, x0 + Math.floor((BADGE - label.length) / 2), row0 + BADGE / 2, label, isFound ? rarityOf(trophy.rarity).color : LABEL_DIM)
+}
+
+export const badgeOf = (trophy: Trophy, isFound: boolean): TrophyCase => {
+    const c = canvasOf(BADGE, BADGE_ROWS)
+    drawBadgeWithLabel(c, trophy, isFound, 0, 0)
+
+    return { cells: toCells(c), columns: BADGE, rows: BADGE_ROWS }
+}
+
 export const trophyCaseOf = (found: Found, width: number): TrophyCase => {
-    const perRow = Math.max(MIN_PER_ROW, Math.min(MAX_PER_ROW, Math.floor((width + GAP) / (BADGE + GAP))))
+    const perRow = badgesPerRowOf(width)
     const lines = Math.ceil(TROPHIES.length / perRow)
     const columns = perRow * (BADGE + GAP) - GAP
     const rows = lines * LINE_ROWS - 1
     const c = canvasOf(columns, rows)
-    TROPHIES.forEach((trophy, i) => {
-        const isFound = found[trophy.id] !== undefined
-        const x0 = (i % perRow) * (BADGE + GAP)
-        const row0 = Math.floor(i / perRow) * LINE_ROWS
-        drawBadge(c, trophy, isFound, x0, row0 * 2)
-        const label = isFound || !trophy.isSecret ? textOf(trophy).label : '???'
-        write(c, x0 + Math.floor((BADGE - label.length) / 2), row0 + BADGE / 2, label, isFound ? rarityOf(trophy.rarity).color : LABEL_DIM)
-    })
+    TROPHIES.forEach((trophy, i) => drawBadgeWithLabel(c, trophy, found[trophy.id] !== undefined, (i % perRow) * (BADGE + GAP), Math.floor(i / perRow) * LINE_ROWS))
 
     return { cells: toCells(c), columns, rows }
 }
